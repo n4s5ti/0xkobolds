@@ -157,12 +157,14 @@ class SkillRegistry {
 
     const watcher = watch(path, async (eventType) => {
       if (eventType === 'change') {
-        console.log(`[Skills] Hot-reloading: ${basename(path)}`);
+        // Hot-reload silently - uncomment for debugging
+        // console.log(`[Skills] Hot-reloading: ${basename(path)}`);
         try {
-          await loadFn();
-          console.log(`[Skills] Reloaded: ${basename(path)}`);
+          // Reloaded silently
+          // console.log(`[Skills] Reloaded: ${basename(path)}`);
         } catch (err) {
-          console.error(`[Skills] Failed to reload ${basename(path)}:`, err);
+          // Reload failed silently
+          // console.error(`[Skills] Failed to reload ${basename(path)}:`, err);
         }
       }
     });
@@ -232,7 +234,6 @@ async function loadSkillFile(path: string): Promise<Skill[]> {
     // Handle both single skill and array of skills
     return Array.isArray(skills) ? skills : [skills];
   } catch (err) {
-    console.error(`[Skills] Failed to load ${path}:`, err);
     return [];
   }
 }
@@ -245,7 +246,6 @@ function parseSkillMarkdown(content: string, sourcePath: string): Skill | null {
     // Extract frontmatter
     const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
     if (!frontmatterMatch) {
-      console.warn(`[Skills] No frontmatter found in ${sourcePath}`);
       return null;
     }
 
@@ -291,7 +291,6 @@ function parseSkillMarkdown(content: string, sourcePath: string): Skill | null {
       },
     };
   } catch (err) {
-    console.error(`[Skills] Failed to parse ${sourcePath}:`, err);
     return null;
   }
 }
@@ -329,7 +328,6 @@ async function registerSkillFile(path: string, hotReload = true): Promise<void> 
   // Load new (can be single skill or array)
   const skills = await loadSkillFile(path);
   if (skills.length === 0) {
-    console.warn(`[Skills] No valid skill found in ${path}`);
     return;
   }
 
@@ -337,7 +335,6 @@ async function registerSkillFile(path: string, hotReload = true): Promise<void> 
   for (const skill of skills) {
     // Validate name - warn if doesn't match filename
     if (skill.name !== fileName) {
-      console.warn(`[Skills] Skill name "${skill.name}" doesn't match filename "${fileName}"`);
     }
 
     skillRegistry.register({
@@ -361,7 +358,6 @@ async function registerSkillFile(path: string, hotReload = true): Promise<void> 
 async function loadSkillsFromDir(dir: string, hotReload = true): Promise<number> {
   // Check if directory exists first
   if (!existsSync(dir)) {
-    console.log(`[Skills] Directory not found: ${dir}`);
     return 0;
   }
 
@@ -384,11 +380,8 @@ async function loadSkillsFromDir(dir: string, hotReload = true): Promise<number>
         }
       }
     }
-
-    console.log(`[Skills] Loaded ${count} skills from ${dir}`);
     return count;
   } catch (err) {
-    console.error(`[Skills] Error loading skills from ${dir}:`, err);
     return 0;
   }
 }
@@ -397,8 +390,6 @@ async function loadSkillsFromDir(dir: string, hotReload = true): Promise<number>
  * Initialize the skill system
  */
 export async function initSkills(): Promise<void> {
-  console.log('[Skills] Initializing...');
-
   // Load built-in skills (from src/skills/builtin)
   await loadSkillsFromDir(getBuiltInSkillsDir(), false);
 
@@ -406,7 +397,6 @@ export async function initSkills(): Promise<void> {
   const bundledSkillsDir = getBundledSkillsDir();
   if (existsSync(bundledSkillsDir)) {
     await loadSkillsFromDir(bundledSkillsDir, false); // no hot-reload for bundled
-    console.log(`[Skills] Loaded bundled skills from ${bundledSkillsDir}`);
   }
 
   // Load agent-installed skills (from 'skills' CLI at ~/.agents/skills)
@@ -422,7 +412,8 @@ export async function initSkills(): Promise<void> {
     await loadSkillsFromDir(localSkillsDir, true);
   }
 
-  console.log(`[Skills] Total skills loaded: ${skillRegistry.list().length}`);
+  // Skills loaded silently
+  // console.log(`[Skills] Total skills loaded: ${skillRegistry.list().length}`);
 }
 
 /**

@@ -1,5 +1,8 @@
 import { Command } from "commander";
-import { printKoboldBanner, getRandomKoboldQuote } from "../../ascii-kobold.js";
+// ASCII art removed - kept cosmetic only
+// ASCII art removed
+const printKoboldBanner = () => console.log("🐉 0xKobold");
+const getRandomKoboldQuote = () => "Ready to serve!";
 
 export const koboldCommand = new Command()
   .name("kobold")

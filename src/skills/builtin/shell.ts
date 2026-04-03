@@ -81,7 +81,7 @@ For destructive operations (rm, mv), you'll be asked for approval.`,
     // Check if command is in safe list (basic check)
     const baseCmd = command.trim().split(' ')[0];
     if (!SAFE_COMMANDS.includes(baseCmd)) {
-      console.log(`[Shell] Warning: Command "${baseCmd}" not in safe list, will require approval`);
+      // silent
     }
 
     try {

@@ -306,7 +306,6 @@ async function searchSkills(params: SkillHubParams): Promise<SkillHubResult> {
       }
     } catch (error) {
       // Continue searching other sources
-      console.error(`Search error from ${source}:`, error);
     }
   }
 

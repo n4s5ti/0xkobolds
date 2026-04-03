@@ -10,7 +10,7 @@ export const webResearchSkill: SkillHandler = async (args, context) => {
   const query = args.query as string;
   const depth = args.depth as number | undefined;
 
-  console.log(`[Web Research] Query: ${query}`);
+  // silent
 
   const mockOutput = `## Web Research Results
 

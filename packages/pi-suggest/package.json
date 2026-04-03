@@ -1,0 +1,32 @@
+{
+  "name": "@0xkobold/pi-suggest",
+  "version": "0.5.0",
+  "description": "Context-aware suggestion engine for pi-coding-agent",
+  "keywords": ["pi-package", "suggestions", "intent", "context-aware"],
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc || echo 'Building...'",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.37",
+    "@types/bun": "^1.2.0",
+    "bun-types": "^1.2.0"
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": ">=0.64.0",
+    "@mariozechner/pi-tui": ">=0.64.0",
+    "@sinclair/typebox": "*"
+  },
+  "pi": {
+    "extensions": ["./dist/index.js"]
+  },
+  "repository": { "type": "git", "url": "https://github.com/0xKobold/pi-suggest.git" },
+  "author": "0xKobold",
+  "license": "MIT"
+}

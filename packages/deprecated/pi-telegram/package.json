@@ -1,0 +1,20 @@
+{
+  "name": "@0xkobold/pi-telegram",
+  "version": "0.1.0",
+  "description": "Telegram integration for PI - bot messages and commands",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@mariozechner/pi-coding-agent": "workspace:*",
+    "node-telegram-bot-api": "^0.64.0"
+  },
+  "devDependencies": {
+    "@types/node-telegram-bot-api": "^0.64.0",
+    "typescript": "^5.3.0"
+  }
+}

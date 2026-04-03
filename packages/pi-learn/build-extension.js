@@ -1,3 +1,8 @@
+/**
+ * Build script for pi-learn extension bundle
+ * Produces an ESM bundle (.mjs) that pi can load
+ */
+
 import { build } from 'esbuild';
 
 await build({
@@ -5,22 +10,25 @@ await build({
   bundle: true,
   platform: 'node',
   target: 'node18',
-  format: 'cjs',
-  outfile: './dist/index.cjs',
+  format: 'esm',
+  outfile: './dist/index.mjs',
   external: [
     'sql.js',
     '@mariozechner/pi-coding-agent',
-    '@mariozechner/pi-tui', 
+    '@mariozechner/pi-tui',
     '@sinclair/typebox',
     '@0xkobold/pi-ollama',
     'path',
     'fs',
     'os',
-    'node:crypto'
+    'node:crypto',
+    'node:path',
+    'node:fs',
+    'node:os'
   ],
   banner: {
-    js: 'const crypto = require("node:crypto");'
+    js: `import { createRequire } from 'module';const require = createRequire(import.meta.url);`
   }
 });
 
-console.log('Built index.cjs');
+console.log('Built index.mjs');

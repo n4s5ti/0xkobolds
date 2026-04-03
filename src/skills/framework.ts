@@ -74,8 +74,6 @@ class SkillRegistry {
     this.builtinSkills.set("api-worker", apiWorkerSkill);
     this.builtinSkills.set("test-worker", testWorkerSkill);
     this.builtinSkills.set("web-research", webResearchSkill);
-
-    console.log("[Skills] Registered 5 built-in worker skills");
   }
 
   /**
@@ -117,7 +115,6 @@ class SkillRegistry {
       this.skills.set(skill.id, skill);
       return skill;
     } catch (error) {
-      console.error(`[Skills] Failed to load skill from ${skillPath}:`, error);
       return null;
     }
   }
@@ -345,7 +342,6 @@ async function installFromGit(
   
   try {
     // Clone the repository
-    console.log(`[Skills] Cloning ${repoUrl}...`);
     execSync(`git clone "${repoUrl}" "${targetPath}"`, {
       cwd: skillsDir,
       timeout: 60000,
@@ -376,7 +372,6 @@ async function installFromTarball(
   
   try {
     // Extract tarball
-    console.log(`[Skills] Extracting ${tarName}...`);
     execSync(`tar -xzf "${tarballPath}" -C "${extractDir}"`, {
       timeout: 30000,
       stdio: 'pipe'

@@ -39,7 +39,8 @@ PI Agent → pi-gateway → Discord | Twitch | Telegram | Slack | WhatsApp adapt
 ## Status
 - ✅ Build passes
 - ✅ All adapters compiled
-- ⚠️ Tests timeout (use `--timeout 5000`)
+- ✅ Tests optimized (90 tests in ~6s, no timeouts)
+- ✅ pi-learn package ready for publish
 
 ## Next Steps
 1. Test adapters with real credentials

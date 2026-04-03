@@ -10,7 +10,7 @@ export const apiWorkerSkill: SkillHandler = async (args, context) => {
   const task = args.task as string;
   const style = args.style as string | undefined;
 
-  console.log(`[API Worker] Task: ${task}`);
+  // silent
 
   const mockOutput = `## API Design
 

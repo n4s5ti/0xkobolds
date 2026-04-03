@@ -10,7 +10,7 @@ export const nextjsWorkerSkill: SkillHandler = async (args, context) => {
   const task = args.task as string;
   const componentType = args.componentType as string | undefined;
 
-  console.log(`[Next.js Worker] Task: ${task}`);
+  // silent
 
   // This is a mock implementation - in reality would use LLM
   const mockOutput = `## Next.js Component

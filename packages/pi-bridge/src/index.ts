@@ -10,15 +10,17 @@
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { Type } from "@sinclair/typebox";
 import { homedir } from "os";
-import { join, resolve } from "path";
-import { existsSync, mkdirSync, cpSync, readFileSync, writeFileSync, readdirSync, statSync } from "fs";
+import { join, resolve, dirname } from "path";
+import { existsSync, mkdirSync, cpSync, readFileSync, writeFileSync, readdirSync, statSync, symlinkSync, unlinkSync } from "fs";
 
 interface BridgeConfig {
   piDir: string;
   koboldDir: string;
   autoMigrate: boolean;
   loadPiExtensions: boolean;
+  builtinExtensions: string[];
 }
 
 interface MigrationResult {
@@ -30,12 +32,74 @@ interface MigrationResult {
 
 function loadConfig(): BridgeConfig {
   const home = homedir();
+  
+  // Builtin extensions to auto-link to ~/.pi/agent/extensions/
+  const builtinExtensions = [
+    // Add paths to 0xkobold packages here
+    { src: join(home, ".0xkobold", "packages", "pi-learn", "src", "index.ts"), name: "pi-learn" },
+    { src: join(home, ".0xkobold", "packages", "pi-ollama", "src", "index.ts"), name: "pi-ollama" },
+    { src: join(home, ".0xkobold", "packages", "pi-gateway", "src", "index.ts"), name: "pi-gateway" },
+  ];
+  
   return {
     piDir: join(home, ".pi"),
     koboldDir: join(home, ".0xkobold"),
     autoMigrate: process.env.PI_BRIDGE_AUTO_MIGRATE !== "false",
     loadPiExtensions: process.env.PI_BRIDGE_LOAD_EXTENSIONS !== "false",
+    builtinExtensions: builtinExtensions.map(e => e.src), // Keep for reference
   };
+}
+
+function ensureBuiltinExtensions(config: BridgeConfig): string[] {
+  const linked: string[] = [];
+  const extensionsDir = join(config.piDir, "extensions");
+  
+  // Builtin extensions to auto-link
+  const builtinExtensions = [
+    { src: join(config.koboldDir, "packages", "pi-learn", "src", "index.ts"), name: "pi-learn.ts" },
+    { src: join(config.koboldDir, "packages", "pi-ollama", "src", "index.ts"), name: "pi-ollama.ts" },
+    { src: join(config.koboldDir, "packages", "pi-gateway", "src", "index.ts"), name: "pi-gateway.ts" },
+  ];
+  
+  if (!existsSync(extensionsDir)) {
+    mkdirSync(extensionsDir, { recursive: true });
+  }
+  
+  for (const ext of builtinExtensions) {
+    if (!existsSync(ext.src)) {
+      console.log(`[PiBridge] Skipping ${ext.name} (not found at ${ext.src})`);
+      continue;
+    }
+    
+    const dest = join(extensionsDir, ext.name);
+    if (symlinkIfNotExists(ext.src, dest)) {
+      linked.push(ext.name);
+    }
+  }
+  
+  // Also link skills
+  const skillsDir = join(config.piDir, "skills");
+  const builtinSkills = [
+    { src: join(config.koboldDir, "packages", "pi-learn", "skills", "pi-learn-assistant"), name: "pi-learn-assistant" },
+  ];
+  
+  if (!existsSync(skillsDir)) {
+    mkdirSync(skillsDir, { recursive: true });
+  }
+  
+  for (const skill of builtinSkills) {
+    if (!existsSync(skill.src)) {
+      console.log(`[PiBridge] Skipping skill ${skill.name} (not found at ${skill.src})`);
+      continue;
+    }
+    
+    const dest = join(skillsDir, skill.name);
+    if (symlinkIfNotExists(skill.src, dest)) {
+      linked.push(`skill:${skill.name}`);
+    }
+  }
+  
+  return linked;
 }
 
 // ============================================================================
@@ -45,6 +109,23 @@ function loadConfig(): BridgeConfig {
 function ensureDir(path: string): void {
   if (!existsSync(path)) {
     mkdirSync(path, { recursive: true });
+  }
+}
+
+function symlinkIfNotExists(src: string, dest: string): boolean {
+  try {
+    if (existsSync(dest)) {
+      // Check if it's already the right symlink
+      const existing = readlinkSync(dest);
+      if (existing === src) return false; // Already linked correctly
+      // Remove old link/file
+      unlinkSync(dest);
+    }
+    symlinkSync(src, dest);
+    return true;
+  } catch (e) {
+    console.log(`[PiBridge] Could not symlink ${dest}: ${e}`);
+    return false;
   }
 }
 
@@ -177,6 +258,14 @@ export default async function piBridgeExtension(pi: ExtensionAPI): Promise<void>
   console.log("[PiBridge] Extension loaded 🔌");
   console.log(`[PiBridge] Pi dir: ${config.piDir}`);
   console.log(`[PiBridge] Kobold dir: ${config.koboldDir}`);
+  
+  // Ensure builtin extensions are linked
+  const builtinLinked = ensureBuiltinExtensions(config);
+  if (builtinLinked.length > 0) {
+    console.log(`[PiBridge] ✅ Linked builtins: ${builtinLinked.join(", ")}`);
+  } else {
+    console.log("[PiBridge] No new builtin extensions to link");
+  }
   
   // Migration phase
   if (config.autoMigrate) {

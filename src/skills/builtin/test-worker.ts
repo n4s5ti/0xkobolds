@@ -10,7 +10,7 @@ export const testWorkerSkill: SkillHandler = async (args, context) => {
   const task = args.task as string;
   const filePath = args.file as string | undefined;
 
-  console.log(`[Test Worker] Task: ${task}`);
+  // silent
 
   const mockOutput = `## Test Generation
 

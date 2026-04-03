@@ -50,7 +50,7 @@ class DuplicateDetector {
     description: string,
     codeSnippet?: string
   ): Promise<DuplicateResult> {
-    console.log(`🔍 Checking for existing: ${description}`);
+    // silent
 
     const matches: DuplicateResult["matches"] = [];
 
@@ -88,7 +88,7 @@ class DuplicateDetector {
     signature: string,
     filePath?: string
   ): Promise<DuplicateResult> {
-    console.log(`🔍 Checking function: ${functionName}`);
+    // silent
 
     // Search for existing function
     const pattern = new RegExp(
@@ -121,7 +121,7 @@ class DuplicateDetector {
     className: string,
     methods?: string[]
   ): Promise<DuplicateResult> {
-    console.log(`🔍 Checking class: ${className}`);
+    // silent
 
     // Search for existing class
     const pattern = new RegExp(
@@ -154,7 +154,7 @@ class DuplicateDetector {
    * Check file existence by purpose
    */
   async checkFile(purpose: string, extension = ".ts"): Promise<DuplicateResult> {
-    console.log(`🔍 Checking file for: ${purpose}`);
+    // silent
 
     // Generate likely filenames
     const keywords = purpose.toLowerCase().split(/\s+/);

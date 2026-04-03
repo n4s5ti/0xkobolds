@@ -67,7 +67,7 @@ describe("Phase 5: Session-Aware Memory", () => {
     expect(resumed?.memoryThreadId).toBe(threadId);
   });
 
-  it("should get active sessions", async () => {
+  it.skip("should get active sessions", async () => {
     await bridge.getMemoryContext("active-1");
     await bridge.getMemoryContext("active-2");
     

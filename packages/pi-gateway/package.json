@@ -1,0 +1,36 @@
+{
+  "name": "@0xkobold/pi-gateway",
+  "version": "0.2.0",
+  "description": "Hermes-style messaging gateway for pi - multi-platform agent with sessions, security, and background tasks",
+  "keywords": ["pi-package", "gateway", "messaging", "hermes", "multi-platform"],
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "npx tsx tests/index.ts",
+    "demo": "npx tsx tests/demo-server.ts",
+    "client": "npx tsx tests/client-demo.ts"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.37",
+    "@types/ws": "^8.18.1",
+    "bun-types": "^1.3.11",
+    "tsx": "^4.19.0",
+    "typescript": "^6.0.2"
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*",
+    "@sinclair/typebox": "*"
+  },
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ],
+    "skills": [
+      "./skills"
+    ]
+  }
+}

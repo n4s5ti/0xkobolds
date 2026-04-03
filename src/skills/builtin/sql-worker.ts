@@ -10,7 +10,7 @@ export const sqlWorkerSkill: SkillHandler = async (args, context) => {
   const task = args.task as string;
   const dialect = args.dialect as string | undefined;
 
-  console.log(`[SQL Worker] Task: ${task}`);
+  // silent
 
   const mockOutput = `## SQL Optimization
 
