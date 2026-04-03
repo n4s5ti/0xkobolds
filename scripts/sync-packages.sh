@@ -1,93 +1,79 @@
 #!/bin/bash
-#
-# Sync packages from monorepo to individual repos using git subtree
-#
-# Usage:
-#   ./scripts/sync-packages.sh [package-name|all]
-#
-# Examples:
-#   ./scripts/sync-packages.sh all           # Sync all packages
-#   ./scripts/sync-packages.sh pi-wallet     # Sync only pi-wallet
-#
+# sync-packages.sh - Pull changes from individual pi-package repos
 
 set -e
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+cd "$(dirname "$0")"
 
-echo -e "${GREEN}========================================${NC}"
-echo -e "${GREEN}  Git Subtree Package Sync Tool${NC}"
-echo -e "${GREEN}========================================${NC}"
-echo
+echo "=== Syncing pi-packages from individual repos ==="
+echo ""
 
-# Package definitions
-declare -A PACKAGES
-PACKAGES[pi-wallet]="https://github.com/0xKobold/pi-wallet.git"
-PACKAGES[pi-erc8004]="https://github.com/0xKobold/pi-erc8004.git"
-PACKAGES[pi-ollama]="https://github.com/0xKobold/pi-ollama.git"
+# Packages to sync
+PACKAGES=(
+  "pi-bridge"
+  "pi-cloudflare-browser"
+  "pi-erc8004"
+  "pi-gateway"
+  "pi-gateway-v2"
+  "pi-learn"
+  "pi-obsidian-bridge"
+  "pi-ollama"
+  "pi-suggest"
+  "pi-wallet"
+)
 
-sync_package() {
-    local pkg=$1
-    local url=${PACKAGES[$pkg]}
-    local remote_name="remote-$pkg"
-    
-    echo -e "\n${YELLOW}Syncing $pkg...${NC}"
-    
-    # Check if remote exists, add if not
-    if ! git remote | grep -q "^${remote_name}$"; then
-        echo "  Adding remote: $url"
-        git remote add $remote_name $url 2>/dev/null || true
-    fi
-    
-    # Fetch from remote
-    echo "  Fetching from $remote_name..."
-    git fetch $remote_name main 2>/dev/null || {
-        echo -e "${RED}  ✗ Failed to fetch from $url${NC}"
-        echo "  Remote repo may not exist yet. Create it on GitHub first:"
-        echo "    https://github.com/new?repo_name=$(basename $url .git)"
-        return 1
+for PKG in "${PACKAGES[@]}"; do
+  echo "--- Syncing $PKG ---"
+  
+  PKG_DIR="packages/$PKG"
+  REMOTE="git@github.com:0xKobold/$PKG.git"
+  
+  if [ ! -d "$PKG_DIR" ]; then
+    echo "⚠️  $PKG_DIR not found, skipping"
+    continue
+  fi
+  
+  # Check if remote exists locally
+  if ! git remote | grep -q "^pkg-$PKG$"; then
+    echo "Adding remote for $PKG..."
+    git remote add "pkg-$PKG" "$REMOTE" 2>/dev/null || {
+      echo "⚠️  Could not add remote (repo may not exist)"
+      continue
     }
+  fi
+  
+  # Fetch latest
+  echo "Fetching from $REMOTE..."
+  git fetch "pkg-$PKG" main --quiet 2>/dev/null || {
+    echo "⚠️  Could not fetch (no main branch or no access)")
+    continue
+  fi
+  
+  # Check if there are changes
+  LOCAL_HASH=$(git rev-parse HEAD:packages/$PKG 2>/dev/null || echo "")
+  REMOTE_HASH=$(git rev-parse pkg-$PKG/main: 2>/dev/null || echo "")
+  
+  if [ "$LOCAL_HASH" = "$REMOTE_HASH" ]; then
+    echo "✅ $PKG is up to date"
+  else
+    echo "📦 Changes found in $PKG"
+    echo "   Local:  $LOCAL_HASH"
+    echo "   Remote: $REMOTE_HASH"
     
-    # Push via subtree
-    echo "  Pushing packages/$pkg to $remote_name/main..."
-    if git subtree push --prefix=packages/$pkg $remote_name main 2>&1; then
-        echo -e "${GREEN}  ✓ $pkg synced successfully${NC}"
+    # Show diff summary
+    git diff --stat "pkg-$PKG/main...HEAD" -- "$PKG_DIR" 2>/dev/null || true
+    
+    read -p "   Pull changes? [y/N] " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+      git subtree pull --prefix="$PKG_DIR" "pkg-$PKG" main --squash -m "sync: $PKG from individual repo"
+      echo "✅ $PKG synced"
     else
-        echo -e "${YELLOW}  ⓘ No changes to push for $pkg${NC}"
+      echo "⏭️  Skipped $PKG"
     fi
-}
+  fi
+  
+  echo ""
+done
 
-# Check if in git repo
-if ! git rev-parse --git-dir > /dev/null 2>&1; then
-    echo -e "${RED}Error: Not in a git repository${NC}"
-    exit 1
-fi
-
-# Get argument
-TARGET=${1:-all}
-
-if [ "$TARGET" = "all" ]; then
-    echo -e "${GREEN}Syncing all packages...${NC}"
-    for pkg in "${!PACKAGES[@]}"; do
-        sync_package $pkg || true
-    done
-else
-    if [ -n "${PACKAGES[$TARGET]}" ]; then
-        sync_package $TARGET
-    else
-        echo -e "${RED}Unknown package: $TARGET${NC}"
-        echo "Available packages:"
-        for pkg in "${!PACKAGES[@]}"; do
-            echo "  - $pkg"
-        done
-        exit 1
-    fi
-fi
-
-echo
-echo -e "${GREEN}========================================${NC}"
-echo -e "${GREEN}  Sync Complete${NC}"
-echo -e "${GREEN}========================================${NC}"
+echo "=== Sync complete ==="
