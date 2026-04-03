@@ -1,0 +1,33 @@
+{
+  "learn": {
+    "workspaceId": "default",
+    "reasoningEnabled": true,
+    "reasoningModel": "kimi-k2.5:cloud",
+    "embeddingModel": "nomic-embed-text",
+    "tokenBatchSize": 1024,
+    "retention": {
+      "retentionDays": 30,
+      "summaryRetentionDays": 90,
+      "conclusionRetentionDays": 365,
+      "pruneOnStartup": true,
+      "pruneIntervalHours": 24
+    },
+    "dream": {
+      "enabled": true,
+      "intervalMs": 300000,
+      "minMessagesSinceLastDream": 10,
+      "batchSize": 50
+    },
+    "retry": {
+      "maxRetries": 3,
+      "retryDelayMs": 1000,
+      "timeoutMs": 120000
+    },
+    "concurrency": 2,
+    "project": {
+      "enabled": true,
+      "autoDetect": true,
+      "injectContext": true
+    }
+  }
+}
