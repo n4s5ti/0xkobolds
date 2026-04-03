@@ -1,3 +1,48 @@
+## Programming Philosophy
+
+All code in 0xKobold follows these principles. See `.pi/skills/programming-philosophy/SKILL.md` for full details.
+
+### Core Principles
+
+| Principle | Description |
+|-----------|-------------|
+| **DRY** | Don't Repeat Yourself - single source of truth |
+| **KISS** | Keep It Simple, Stupid - prefer simplest solution |
+| **FP** | Functional Programming - pure functions, immutability |
+
+### NASA 10 Coding Rules (Safety-Critical)
+
+1. **Avoid complex control flow** - No recursion, goto, setjmp/longjmp
+2. **Fixed loop bounds** - Every loop has compile-time limit
+3. **No dynamic memory** - No heap allocation in running code
+4. **≤60 lines per function** - Small, focused functions
+5. **≥2 assertions per function** - Defensive programming
+6. **Minimal scope** - No globals, local variables
+7. **Check all returns** - Validate all inputs and outputs
+8. **Simple macros** - No complex preprocessor tricks
+9. **Single-level pointers** - No multiple levels of indirection
+10. **Warnings as errors** - Clean compilation
+
+### Quick Reference
+
+```typescript
+// ✅ Good: Pure function, validation, immutable
+function mergeConfig(base: Config, override: Partial<Config>): Config {
+  console.assert(base !== null, 'base cannot be null');
+  console.assert(override !== null, 'override cannot be null');
+  return { ...base, ...override };
+}
+
+// ❌ Bad: Mutation, global state, complex control flow
+let globalState: any;
+function mutateAndReturn(items: any[]) {
+  items.forEach(item => globalState = item);
+  return items.map(x => x * recursive(x));
+}
+```
+
+---
+
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.

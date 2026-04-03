@@ -1,11 +1,15 @@
 /**
  * Pi-Framework Configuration for 0xKobold
- *
- * Configures pi-coding-agent with 0xKobold extensions and settings
- * CLEAN CONFIG - Unified Sessions Architecture
+ * 
+ * Philosophy: Explicit over magic (KISS, DRY)
+ * - No auto-discovery - list what's loaded
+ * - Clear structure - infrastructure, then features
  */
 
-// Local Config type since it's not exported from pi-coding-agent
+import { existsSync, readFileSync } from "fs";
+import { join, resolve, dirname } from "path";
+
+// Local Config type
 interface Config {
   ui?: 'tui' | 'cli';
   extensions?: string[];
@@ -13,148 +17,169 @@ interface Config {
   settings?: Record<string, unknown>;
 }
 
+/**
+ * Get project root - handles both dev (src/) and prod (dist/)
+ */
+function getProjectRoot(): string {
+  try {
+    const url = import.meta.url;
+    if (url) {
+      const filePath = url.replace(/^file:\/\//, '');
+      if (filePath.includes('/dist/')) {
+        return resolve(dirname(dirname(filePath)));
+      }
+      return resolve(dirname(filePath), '..');
+    }
+  } catch {}
+  
+  try {
+    if (String(__dirname).includes('/dist/')) {
+      return resolve(__dirname, '../..');
+    }
+  } catch {}
+  
+  return resolve(__dirname, '..');
+}
+
+const projectRoot = getProjectRoot();
+
+/**
+ * Resolve extension path - prefers dist/ if built, else src/
+ */
+function ext(name: string): string {
+  const base = join(projectRoot, 'node_modules', name);
+  
+  // Try dist/ first (production)
+  const distPath = join(base, 'dist', 'index.js');
+  if (existsSync(distPath)) {
+    return distPath;
+  }
+  
+  // Fall back to src/ (development)
+  const srcPath = join(base, 'src', 'index.ts');
+  if (existsSync(srcPath)) {
+    return srcPath;
+  }
+  
+  return join(base, 'dist', 'index.js'); // Default
+}
+
+// =============================================================================
+// CONFIG
+// =============================================================================
+
 export const config: Config = {
-  // Use pi-tui for terminal UI
   ui: 'tui',
 
-  // Load extensions (paths resolved from project root)
-  // Order matters: infrastructure first, then features, then integrations
   extensions: [
-    // Infrastructure (load FIRST)
-    './src/config/unified-config.ts',                    // UNIFIED: Config system (no-op, just types)
-    './src/extensions/core/config-extension.ts',           // UNIFIED: /config commands
-    '../../node_modules/@0xkobold/pi-ollama/dist/index.js',  // 🦙 Ollama (npm)
-    './src/extensions/core/routed-ollama-extension.ts',  // 🧠 Adaptive model routing (wraps Ollama)
-    './src/sessions/UnifiedSessionBridge.ts',              // UNIFIED: Session management
+    // Infrastructure
+    './src/config/unified-config.ts',
+    './src/extensions/core/config-extension.ts',
+    './src/extensions/core/routed-ollama-extension.ts',
+    './src/sessions/UnifiedSessionBridge.ts',
     
     // Core Features
-    './src/extensions/core/memory-bootstrap-extension.ts', // 🧠 Auto-load memories on startup (CLAWS-style)
-    './src/extensions/core/persona-loader-extension.ts', // Load identity files
-    './src/extensions/core/onboarding-extension.ts',     // First-run setup
-    './src/extensions/core/task-manager-extension.ts',   // Task board and workflow
-    './src/extensions/core/heartbeat-extension.ts',      // Koclaw-style heartbeat monitoring
+    './src/extensions/core/memory-bootstrap-extension.ts',
+    './src/extensions/core/persona-loader-extension.ts',
+    './src/extensions/core/onboarding-extension.ts',
+    './src/extensions/core/task-manager-extension.ts',
+    './src/extensions/core/heartbeat-extension.ts',
     
     // Multi-Channel
-    './src/extensions/core/multi-channel-extension.ts', // Unified channel management
-    './src/extensions/core/discord-extension.ts',       // Discord bot integration
-    './src/extensions/core/twitch-extension.ts',       // Twitch chat integration
+    './src/extensions/core/multi-channel-extension.ts',
+    './src/extensions/core/discord-extension.ts',
+    './src/extensions/core/twitch-extension.ts',
     
-    // 🐉 DRACONIC SYSTEMS (Superior agent management)
-    './src/extensions/core/agent-orchestrator-extension.ts',  // Agent orchestration
-    './src/extensions/core/gateway-extension.ts',            // WebSocket gateway
-    './src/extensions/core/fileops-extension.ts',            // File operations
-    './src/extensions/core/git-commit-extension.ts',       // Git commit helper
-    './src/extensions/core/draconic-lair-extension.ts',      // Project workspaces
-    './src/extensions/core/draconic-hoard-extension.ts',     // Code snippets
-
-    // Safety Extensions (CONSOLIDATED into draconic-safety)
-    './src/extensions/core/draconic-safety-extension.ts',  // 🛡️ Replaces: protected-paths, confirm-destructive, dirty-repo-guard, git-checkpoint, auto-security-scan, compaction-safeguard
+    // DRACONIC SYSTEMS
+    './src/extensions/core/agent-orchestrator-extension.ts',
+    './src/extensions/core/gateway-extension.ts',
+    './src/extensions/core/fileops-extension.ts',
+    './src/extensions/core/git-commit-extension.ts',
+    './src/extensions/core/draconic-lair-extension.ts',
+    './src/extensions/core/draconic-hoard-extension.ts',
+    './src/extensions/core/draconic-safety-extension.ts',
 
     // Developer Tools
-    './src/extensions/core/extension-scaffold-extension.ts', // Scaffold new extensions
-    './src/extensions/core/diagnostics-extension.ts',        // Telemetry and health monitoring
+    './src/extensions/core/extension-scaffold-extension.ts',
+    './src/extensions/core/diagnostics-extension.ts',
 
     // Tool Integrations
-    './src/extensions/core/mcp-extension.ts',            // Model Context Protocol support
-    './node_modules/@aliou/pi-processes/src/index.ts',   // Background process management
-    './src/extensions/core/websearch-enhanced-extension.ts',        // Ollama web search
-    // './src/extensions/core/cloudflare-browser-extension.ts',  // MOVED: Now at npm:@0xkobold/pi-cloudflare-browser
-    './node_modules/@0xkobold/pi-cloudflare-browser/dist/index.js',  // ☁️ Browser Rendering (published)
-    './src/extensions/core/wallet-extension.ts',         // 🪙 CDP Agentic + Ethers.js (legacy - published as @0xkobold/pi-wallet)
-    './src/extensions/core/update-extension.ts',           // Framework update functionality
-    './src/extensions/core/self-update-extension.ts',      // 0xKobold self-update
-    // Memory & Learning (via pi-learn)
-    './node_modules/@0xkobold/pi-learn/dist/index.js',  // Open-source memory infrastructure (peer representations, reasoning, context)
+    './src/extensions/core/mcp-extension.ts',
+    './node_modules/@aliou/pi-processes/src/index.ts',
+    './src/extensions/core/websearch-enhanced-extension.ts',
+    './src/extensions/core/wallet-extension.ts',
+    './src/extensions/core/update-extension.ts',
+    './src/extensions/core/self-update-extension.ts',
     
-    // 🐉 Community Extensions (PI Ecosystem Wrappers)
-    './src/extensions/community/draconic-subagents-wrapper.ts',  // pi-subagents bridge
-    './src/extensions/community/draconic-messenger-wrapper.ts',  // pi-messenger bridge
-    // '../../node_modules/pi-web-access/index.ts',  // 🕸️ DISABLED: Requires Perplexity/Gemini API key
-    // Using websearch-enhanced-extension.ts instead (free DuckDuckGo + SearX fallback)
+    // Community Extensions
+    './src/extensions/community/draconic-subagents-wrapper.ts',
+    './src/extensions/community/draconic-messenger-wrapper.ts',
     
-    // 🧠 Context Engine Extension (Koclaw-style context management)
-    './src/extensions/core/intelligent-context-extension.ts',  // Intelligent context via framework events
+    // Context Engine
+    './src/extensions/core/intelligent-context-extension.ts',
     
-    // 🔗 Obsidian Bridge (published)
-    // './src/extensions/core/obsidian-bridge-extension.ts',  // MOVED: Now at npm:@0xkobold/pi-obsidian-bridge
-    './node_modules/@0xkobold/pi-obsidian-bridge/dist/index.js',  // 📓 Obsidian vault sync
-
-    // 🪙 Wallet + ERC-8004 (Agent economy - PUBLISHED)
-    'npm:@0xkobold/pi-wallet',                           // CDP Agentic + Ethers.js + x402
-    'npm:@0xkobold/pi-erc8004',                          // ERC-8004 identity & reputation
+    // Published @0xkobold packages (explicit paths)
+    ext('@0xkobold/pi-learn'),
+    ext('@0xkobold/pi-ollama'),
+    ext('@0xkobold/pi-bridge'),
+    ext('@0xkobold/pi-obsidian-bridge'),
+    ext('@0xkobold/pi-cloudflare-browser'),
+    ext('@0xkobold/pi-wallet'),
+    ext('@0xkobold/pi-erc8004'),
+    ext('@0xkobold/pi-gateway'),
   ],
 
-  // Custom keybindings
   keybindings: {
     'ctrl+c': 'interrupt',
     'ctrl+d': 'shutdown',
     'ctrl+l': 'clear',
     'f1': 'help',
-    'f2': 'toggle_tree',     // Was: toggle_mode (mode-manager removed)
+    'f2': 'toggle_tree',
     'ctrl+t': 'toggle_tree',
     'ctrl+n': 'new_chat',
-    'ctrl+s': 'session_snapshot', // NEW: Create session snapshot
-    'ctrl+r': 'resume_session',   // NEW: Resume suspended session
+    'ctrl+s': 'session_snapshot',
+    'ctrl+r': 'resume_session',
   },
 
-  // 0xKobold-specific settings
   settings: {
-    // Unified Sessions (NEW)
     '0xkobold.sessions.enabled': true,
     '0xkobold.sessions.dbPath': '~/.0xkobold/sessions.db',
     '0xkobold.sessions.autoResume': true,
-    '0xkobold.sessions.resumeMaxAgeHours': 168,  // 1 week
-    '0xkobold.sessions.snapshotInterval': 300000,  // 5 minutes
+    '0xkobold.sessions.resumeMaxAgeHours': 168,
+    '0xkobold.sessions.snapshotInterval': 300000,
     
-    // Gateway settings
     '0xkobold.gateway.port': 18789,
     '0xkobold.gateway.host': '127.0.0.1',
     
-    // Discord settings
     '0xkobold.discord.enabled': true,
     '0xkobold.discord.autoReply': true,
     
-    // Memory settings
     '0xkobold.memory.persist': true,
     '0xkobold.memory.dbPath': '~/.0xkobold/memory.db',
-    '0xkobold.memory.unified': true, // NEW: Link memories to unified sessions
+    '0xkobold.memory.unified': true,
     
-    // Agent settings
     '0xkobold.agents.workdir': '~/.0xkobold/agents',
-    '0xkobold.agents.persist': true, // NEW: Agents survive restarts
+    '0xkobold.agents.persist': true,
     
-    // Model settings
     '0xkobold.model.provider': 'ollama',
     '0xkobold.model.name': 'kimi-k2.5:cloud',
-    '0xkobold.model.custom': [], // Add custom models here
+    '0xkobold.model.custom': [],
     
-    // Update settings
     '0xkobold.update.checkOnStartup': true,
     '0xkobold.update.autoInstall': true,
     
-    // Heartbeat settings
     '0xkobold.heartbeat.enabled': true,
     '0xkobold.heartbeat.every': '30m',
     '0xkobold.heartbeat.ackMaxChars': 300,
     
-    // Obsidian Bridge settings (NEW)
-    '0xkobold.obsidian.enabled': false, // Opt-in, user enables when ready
-    '0xkobold.obsidian.vault': 'obsidian_vault', // Relative to ~/.0xkobold/
+    '0xkobold.obsidian.enabled': false,
+    '0xkobold.obsidian.vault': 'obsidian_vault',
     '0xkobold.obsidian.tasksFile': '10-Action/Tasks.md',
     '0xkobold.obsidian.pollOn': ['morning', 'evening', 'periodic'],
-    '0xkobold.obsidian.autoCreateVault': true, // Create vault if doesn't exist
+    '0xkobold.obsidian.autoCreateVault': true,
   },
 };
 
-// Export type for use in other modules
 export type KoboldConfig = typeof config;
 
-// Note: Removed extensions
-// - session-bridge-extension.ts → UnifiedSessionBridge.ts
-// - session-manager-extension.ts → UnifiedSessionBridge.ts
-// - mode-manager-extension.ts → REMOVED (use natural workflow instead)
-// - context-aware-extension.ts → REMOVED (superseded by unified sessions)
-// - session-name-extension.ts → REMOVED (integrated into unified sessions)
-// - handoff-extension.ts → REMOVED (forking is in UnifiedSessionBridge)
 export default config;
-
