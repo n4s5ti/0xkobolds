@@ -11,7 +11,6 @@ on:
     inputs:
       package:
         description: 'Specific package to publish (optional)'
-        required: false
 
 jobs:
   publish:
@@ -29,32 +28,36 @@ jobs:
         with:
           bun-version: latest
 
+      - name: Configure git
+        run: |
+          git config --global user.name "0xKobold Bot"
+          git config --global user.email "bot@0xkobold.ai"
+
       - name: Detect changed packages
         id: changed
         run: |
           if [ -n "${{ github.event.inputs.package }}" ]; then
             echo "package=${{ github.event.inputs.package }}" >> $GITHUB_OUTPUT
+            echo "mode=single" >> $GITHUB_OUTPUT
             exit 0
           fi
           
           # Get list of changed packages
-          CHANGED=$(git diff --name-only HEAD~1 packages/ | cut -d/ -f2 | sort -u | grep "^pi-" | xargs -I{} basename {} | tr '\n' ',' | sed 's/,$//')
-          echo "changed=$CHANGED" >> $GITHUB_OUTPUT
+          CHANGED=$(git diff --name-only HEAD~1 packages/ 2>/dev/null | cut -d/ -f2 | sort -u | grep "^pi-" | tr '\n' ',' | sed 's/,$//')
+          echo "package=$CHANGED" >> $GITHUB_OUTPUT
+          echo "mode=all" >> $GITHUB_OUTPUT
           echo "Packages with changes: $CHANGED"
 
       - name: Setup npm credentials
+        if: env.NPM_TOKEN != ''
         run: |
-          # Note: NPM_TOKEN must be set in repo secrets
-          # For npm publishing
-          if [ -n "$NPM_TOKEN" ]; then
-            echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" > ~/.npmrc
-          fi
+          echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
 
       - name: Publish each package
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
-          PACKAGES="${{ steps.changed.outputs.changed }}"
+          PACKAGES="${{ steps.changed.outputs.package }}"
           [ -z "$PACKAGES" ] && echo "No packages to publish" && exit 0
           
           for PKG in $(echo "$PACKAGES" | tr ',' ' '); do
@@ -75,25 +78,50 @@ jobs:
             echo "Publishing: $PKG"
             echo "=========================================="
             
-            # Install dependencies
+            PKG_REMOTE="git@github.com:0xKobold/$PKG.git"
+            
+            # Install dependencies and build
             cd "$PKG_DIR"
-            bun install
-            
-            # Build
+            bun install --frozen-lockfile 2>/dev/null || bun install
             bun run build 2>&1 || { echo "❌ Build failed"; exit 1; }
+            cd - > /dev/null
             
-            # Push to individual repo
-            echo "Pushing to git@github.com:0xKobold/$PKG.git"
-            git remote add pkg-origin git@github.com:0xKobold/$PKG.git 2>/dev/null || true
-            git push pkg-origin main --force 2>&1 || echo "⚠️ Push to $PKG failed (may not exist)"
+            # === Push to individual repo using subtree ===
             
-            # Publish to npm (if version changed)
-            if [ -n "$NPM_TOKEN" ]; then
-              echo "Publishing to npm..."
-              npm publish --access public 2>&1 || echo "⚠️ npm publish failed (version may exist)"
+            # Add remote if not exists
+            if ! git remote | grep -q "^pkg-$PKG$"; then
+              git remote add "pkg-$PKG" "$PKG_REMOTE"
             fi
             
-            cd - > /dev/null
+            # Fetch existing remote history
+            git fetch "pkg-$PKG" main --quiet 2>/dev/null || {
+              echo "Creating new main branch for $PKG..."
+            }
+            
+            # Use subtree split to extract package commits
+            # Then push to individual repo
+            echo "Extracting $PKG history..."
+            SPLIT_HASH=$(git subtree split --prefix="$PKG_DIR" -b "split-$PKG" 2>/dev/null | tail -1)
+            
+            if [ -n "$SPLIT_HASH" ]; then
+              echo "Pushing to $PKG individual repo..."
+              git push "pkg-$PKG" "split-$PKG:main" --force 2>&1 || echo "⚠️ Push to $PKG failed"
+              git branch -d "split-$PKG" 2>/dev/null || true
+            else
+              echo "⚠️ Subtree split failed, trying direct push..."
+              # Fallback: just push the directory content
+              (cd "$PKG_DIR" && git init && git add . && git commit -m "Sync from monorepo")
+              git push "pkg-$PKG" main --force 2>&1 || echo "⚠️ Direct push also failed"
+            fi
+            
+            # === Publish to npm ===
+            if [ -n "${{ secrets.NPM_TOKEN }}" ]; then
+              echo "Publishing to npm..."
+              cd "$PKG_DIR"
+              npm publish --access public 2>&1 || echo "⚠️ npm publish failed (version may already exist)"
+              cd - > /dev/null
+            fi
+            
             echo "✅ $PKG complete"
             echo ""
           done
@@ -101,5 +129,8 @@ jobs:
       - name: Summary
         run: |
           echo "## Publish Summary"
-          echo "Triggered by: ${{ github.event_name }}"
-          echo "Changed packages: ${{ steps.changed.outputs.changed }}"
+          echo "| Item | Value |"
+          echo "|------|-------|"
+          echo "| Trigger | ${{ github.event_name }} |"
+          echo "| Packages | ${{ steps.changed.outputs.package }} |"
+          echo "| Mode | ${{ steps.changed.outputs.mode }} |"
