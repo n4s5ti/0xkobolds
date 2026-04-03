@@ -15,6 +15,7 @@
     "prepublishOnly": "npm run build"
   },
   "keywords": [
+    "pi-package",
     "pi-extension",
     "bridge",
     "migration",

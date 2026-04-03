@@ -1,0 +1,105 @@
+name: Publish pi-packages
+
+on:
+  release:
+    types: [published]
+  push:
+    branches: [main]
+    paths:
+      - 'packages/pi-*/**'
+  workflow_dispatch:
+    inputs:
+      package:
+        description: 'Specific package to publish (optional)'
+        required: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Detect changed packages
+        id: changed
+        run: |
+          if [ -n "${{ github.event.inputs.package }}" ]; then
+            echo "package=${{ github.event.inputs.package }}" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Get list of changed packages
+          CHANGED=$(git diff --name-only HEAD~1 packages/ | cut -d/ -f2 | sort -u | grep "^pi-" | xargs -I{} basename {} | tr '\n' ',' | sed 's/,$//')
+          echo "changed=$CHANGED" >> $GITHUB_OUTPUT
+          echo "Packages with changes: $CHANGED"
+
+      - name: Setup npm credentials
+        run: |
+          # Note: NPM_TOKEN must be set in repo secrets
+          # For npm publishing
+          if [ -n "$NPM_TOKEN" ]; then
+            echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" > ~/.npmrc
+          fi
+
+      - name: Publish each package
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PACKAGES="${{ steps.changed.outputs.changed }}"
+          [ -z "$PACKAGES" ] && echo "No packages to publish" && exit 0
+          
+          for PKG in $(echo "$PACKAGES" | tr ',' ' '); do
+            PKG_DIR="packages/$PKG"
+            
+            if [ ! -d "$PKG_DIR" ]; then
+              echo "⚠️ Directory $PKG_DIR not found, skipping"
+              continue
+            fi
+            
+            # Check if package has pi-package keyword
+            if ! grep -q '"pi-package"' "$PKG_DIR/package.json" 2>/dev/null; then
+              echo "⏭️ $PKG has no pi-package keyword, skipping"
+              continue
+            fi
+            
+            echo "=========================================="
+            echo "Publishing: $PKG"
+            echo "=========================================="
+            
+            # Install dependencies
+            cd "$PKG_DIR"
+            bun install
+            
+            # Build
+            bun run build 2>&1 || { echo "❌ Build failed"; exit 1; }
+            
+            # Push to individual repo
+            echo "Pushing to git@github.com:0xKobold/$PKG.git"
+            git remote add pkg-origin git@github.com:0xKobold/$PKG.git 2>/dev/null || true
+            git push pkg-origin main --force 2>&1 || echo "⚠️ Push to $PKG failed (may not exist)"
+            
+            # Publish to npm (if version changed)
+            if [ -n "$NPM_TOKEN" ]; then
+              echo "Publishing to npm..."
+              npm publish --access public 2>&1 || echo "⚠️ npm publish failed (version may exist)"
+            fi
+            
+            cd - > /dev/null
+            echo "✅ $PKG complete"
+            echo ""
+          done
+
+      - name: Summary
+        run: |
+          echo "## Publish Summary"
+          echo "Triggered by: ${{ github.event_name }}"
+          echo "Changed packages: ${{ steps.changed.outputs.changed }}"

@@ -17,6 +17,7 @@
     "prepublishOnly": "npm run build"
   },
   "keywords": [
+    "pi-package",
     "pi-extension",
     "cloudflare",
     "browser-rendering",
