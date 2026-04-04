@@ -73,7 +73,38 @@ pi-suggest/
 - Confidence scoring
 - Rejection learning (don't suggest what user ignores)
 
-## User Interaction
+## LLM-Powered Suggestions (Phase 2)
+
+pi-suggest can use a local LLM (Ollama) to generate smarter, more contextual suggestions.
+
+### Setup
+
+1. Install Ollama: `brew install ollama` (macOS) or `curl -fsSL https://ollama.com/install.sh`
+2. Pull a model: `ollama pull llama3.2`
+3. Start Ollama: `ollama serve`
+
+### Configuration
+
+```bash
+export OLLAMA_BASE_URL=http://localhost:11434
+export OLLAMA_MODEL=llama3.2
+```
+
+Or use `/suggest configure` to see current settings.
+
+### Commands
+
+- `/suggest configure` - Show LLM configuration
+- `/suggest status` - Show current suggestion
+
+### How It Works
+
+1. **Session analysis** extracts topics, decisions, and tasks
+2. **Intent classifier** determines user intent (IMPLEMENT, DEBUG, etc.)
+3. **File context extractor** reads TODOs/FIXMEs from current file
+4. **Pattern recognizer** detects workflow patterns
+5. **LLM** generates contextual suggestions based on all above
+6. **Fallback** to templates if LLM is unavailable
 
 ### Commands
 - `/suggest` - Show current suggestions
@@ -204,10 +235,10 @@ interface PiSuggestConfig {
 - [ ] Dismiss tracking
 
 ### Phase 2: Intelligence
-- [ ] LLM-powered suggestion generation
-- [ ] Confidence scoring
-- [ ] Context extraction from files
-- [ ] Pattern recognition
+- [x] LLM-powered suggestion generation
+- [x] Context extraction from files
+- [x] Pattern recognition
+- [x] Confidence scoring
 
 ### Phase 3: Learning
 - [ ] pi-learn integration
