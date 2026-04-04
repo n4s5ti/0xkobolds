@@ -53,6 +53,23 @@ export interface PiSuggestConfig {
   use_session_history: boolean;
 }
 
+// Proactive suggestion configuration
+export interface ProactiveConfig {
+  enabled: boolean;
+  minResponseLength: number;  // Min chars before auto-suggest
+  minIdleTime: number;        // Min ms of idle before suggestion
+  showMultiple: boolean;       // Show 3-5 suggestions vs 1
+  maxSuggestions: number;      // Max suggestions to show
+}
+
+export const DEFAULT_PROACTIVE_CONFIG: ProactiveConfig = {
+  enabled: true,
+  minResponseLength: 200,
+  minIdleTime: 2000,
+  showMultiple: true,
+  maxSuggestions: 3,
+};
+
 export const DEFAULT_CONFIG: PiSuggestConfig = {
   auto_suggest: true,
   min_response_length: 100,

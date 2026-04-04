@@ -26,6 +26,9 @@ import { FileContextExtractor, type FileContext } from "./generator/file-context
 import { SuggestionLearner } from "./learn/learner.js";
 import { PreferenceExtractor } from "./learn/preferences.js";
 import { RejectionPatternDetector } from "./learn/rejections.js";
+import { SuggestionWidget, type SuggestionItem } from "./ui/widget.js";
+import { ShortcutHandler } from "./ui/shortcuts.js";
+import { type ProactiveConfig, DEFAULT_PROACTIVE_CONFIG } from "./types.js";
 
 // Ghost text constants
 const GHOST_COLOR = "\x1b[38;5;244m";
@@ -56,6 +59,11 @@ interface RuntimeState {
   learner: SuggestionLearner;
   preferenceExtractor: PreferenceExtractor;
   rejectionDetector: RejectionPatternDetector;
+  // UI
+  proactiveConfig: ProactiveConfig;
+  widget: SuggestionWidget;
+  shortcutHandler: ShortcutHandler;
+  lastResponseTime: number;
 }
 
 const runtime: RuntimeState = {
@@ -74,6 +82,11 @@ const runtime: RuntimeState = {
   learner: new SuggestionLearner(),
   preferenceExtractor: new PreferenceExtractor(),
   rejectionDetector: new RejectionPatternDetector(),
+  // UI
+  proactiveConfig: DEFAULT_PROACTIVE_CONFIG,
+  widget: new SuggestionWidget(),
+  shortcutHandler: new ShortcutHandler(),
+  lastResponseTime: 0,
 };
 
 // GhostSuggestionEditor (existing, unchanged)
@@ -368,8 +381,11 @@ export default async function suggester(pi: ExtensionAPI) {
 /**
  * Generate a suggestion based on conversation messages
  */
-async function generateSuggestion(messages: Message[]): Promise<string | undefined> {
-  if (!messages || messages.length === 0) return undefined;
+/**
+ * Generate multiple suggestions based on conversation messages
+ */
+async function generateSuggestions(messages: Message[]): Promise<SuggestionItem[]> {
+  if (!messages || messages.length === 0) return [];
 
   // Extract recent user prompts
   const recentPrompts = messages
@@ -378,7 +394,7 @@ async function generateSuggestion(messages: Message[]): Promise<string | undefin
     .map((m) => m.content)
     .filter((content): content is string => typeof content === "string" && content.length > 0);
 
-  if (recentPrompts.length === 0) return undefined;
+  if (recentPrompts.length === 0) return [];
 
   // Analyze session using SessionAnalyzer
   const summary = runtime.sessionAnalyzer.summarize(messages as any);
@@ -390,81 +406,51 @@ async function generateSuggestion(messages: Message[]): Promise<string | undefin
   // Update summary with detected intent
   summary.intent = intentResult.intent;
 
-  // Try LLM generation first
-  let suggestionText: string | undefined;
-  let basedOn = "template";
-  let confidence = intentResult.confidence;
+  const items: SuggestionItem[] = [];
 
+  // Try LLM generation first
   try {
     if (!runtime.llmSuggester) {
       runtime.llmSuggester = new LlmSuggester(runtime.llmConfig);
     }
     
-    // Extract file context if we have recent files
-    let fileContext: FileContext | undefined;
-    if (summary.recent_files.length > 0) {
-      // File reading would be done here in a full implementation
-      // For now, we skip actual file reading
-    }
+    const llmSuggestions = await runtime.llmSuggester.generateSuggestions(summary);
     
-    const llmSuggestions = await runtime.llmSuggester.generateSuggestions(summary, fileContext);
-    
-    if (llmSuggestions.length > 0) {
-      suggestionText = llmSuggestions[0].text;
-      basedOn = "llm";
-      confidence = llmSuggestions[0].confidence;
+    for (const s of llmSuggestions.slice(0, 2)) {
+      items.push({ text: s.text, type: s.type, confidence: s.confidence });
     }
   } catch (error) {
     console.error("[pi-suggest] LLM generation failed:", error);
-    // Fall through to template-based
   }
 
-  // Fallback to template-based generation
-  if (!suggestionText) {
-    suggestionText = runtime.suggestionGenerator.generateSingle(summary, intentResult.intent);
-    basedOn = "template";
-    confidence = intentResult.confidence;
-  }
-
-  // Apply learning: check if we should avoid this suggestion
-  if (suggestionText && runtime.rejectionDetector.shouldAvoid(suggestionText)) {
-    // Try alternative or penalize
-    const alternative = runtime.learner.getAlternativeSuggestion(suggestionText);
-    if (alternative) {
-      suggestionText = alternative;
-      confidence *= 0.8; // Penalize alternative too
+  // Add template-based suggestions
+  const maxSuggestions = runtime.proactiveConfig.maxSuggestions;
+  const templateSuggestions = runtime.suggestionGenerator.generate(summary, intentResult.intent, maxSuggestions);
+  
+  for (const s of templateSuggestions) {
+    // Check if we should avoid this suggestion
+    if (runtime.rejectionDetector.shouldAvoid(s.text)) {
+      const alternative = runtime.learner.getAlternativeSuggestion(s.text);
+      if (alternative) {
+        items.push({ text: alternative, type: s.type, confidence: s.confidence * 0.8 });
+        continue;
+      }
     }
-  }
-
-  // Apply learning boost/penalty
-  if (suggestionText) {
-    const boost = runtime.learner.getSuggestionBoost(suggestionText);
-    confidence *= boost;
-  }
-
-  // Store for persistence
-  if (suggestionText && runtime.store) {
-    const suggestion = {
-      id: `suggest_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
-      type: "action" as const,
-      text: suggestionText,
-      confidence,
-      reason: `Based on ${intentResult.intent} intent`,
-      context: { based_on: basedOn as "template" | "llm" },
-    };
     
-    await runtime.store.recordSuggestion(suggestion);
-    runtime.cache.set(suggestion);
-    
-    // Record for learning
-    runtime.learner.recordOutcome({
-      suggestion: suggestionText,
-      type: "action",
-      accepted: false, // Will be updated when user accepts/dismisses
-    });
+    // Apply learning boost
+    const boost = runtime.learner.getSuggestionBoost(s.text);
+    items.push({ text: s.text, type: s.type, confidence: s.confidence * boost });
   }
 
-  return suggestionText;
+  return items.slice(0, maxSuggestions);
+}
+
+/**
+ * Generate a single suggestion (legacy compatibility)
+ */
+async function generateSuggestion(messages: Message[]): Promise<string | undefined> {
+  const items = await generateSuggestions(messages);
+  return items[0]?.text;
 }
 
 /**
