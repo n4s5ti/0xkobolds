@@ -276,10 +276,10 @@ interface PiSuggestConfig {
 - [x] Cross-session memory - Via SQLite persistence
 
 ### Phase 4: Polish
-- [ ] Proactive suggestions
-- [ ] Keyboard shortcuts
-- [ ] Custom templates
-- [ ] Team/shared suggestions
+- [x] Proactive suggestions - Auto-show after long responses
+- [x] Keyboard shortcuts - 1-5 to select, arrows to navigate
+- [x] Custom templates - User-defined suggestion templates
+- [x] Team sharing - Share configs across team
 
 ## Success Metrics
 

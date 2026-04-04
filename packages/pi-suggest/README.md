@@ -8,10 +8,15 @@ Ghost text prompt suggester for pi-coding-agent. Forked from @guwidoe/pi-prompt-
 - ⌨️ **Space to Accept** - Press Space on empty editor to accept suggestion
 - ✏️ **Type to Override** - Any keypress hides ghost and types normally
 - 🔄 **Auto-Generate** - Suggestions generated after each agent response
-- 🤖 **LLM-Powered** - Uses Ollama for smart, contextual suggestions (Phase 2)
-- 📝 **File Context** - Extracts TODOs/FIXMEs from code (Phase 2)
-- 🔍 **Pattern Recognition** - Detects workflow patterns (Phase 2)
-- 📚 **Learning** - Learns from accepted/dismissed suggestions (Phase 3)
+- 🤖 **LLM-Powered** - Uses Ollama for smart, contextual suggestions
+- 📝 **File Context** - Extracts TODOs/FIXMEs from code
+- 🔍 **Pattern Recognition** - Detects workflow patterns
+- 📚 **Learning** - Learns from accepted/dismissed suggestions
+- ⚡ **Proactive** - Auto-shows suggestions after long responses
+- 🎹 **Keyboard Shortcuts** - 1-5 to select, arrows to navigate
+- 📋 **Multi-Suggestion** - Shows up to 3 suggestions
+- 🔧 **Custom Templates** - Define your own suggestion templates
+- 👥 **Team Sharing** - Share configs across team
 
 ## Install
 
@@ -65,6 +70,52 @@ After an assistant completion, the extension suggests the next user prompt as gh
 - **Type any character** to dismiss the ghost and type normally
 - Suggestions are tracked for acceptance rate analytics
 
+## Phase 4 Features
+
+### Proactive Suggestions
+Suggestions automatically appear after long responses (>200 chars).
+
+Configuration:
+```typescript
+{
+  enabled: true,
+  minResponseLength: 200,
+  minIdleTime: 2000,
+  maxSuggestions: 3,
+}
+```
+
+### Keyboard Shortcuts
+- `1-5` - Select suggestion by number
+- `↑↓` - Navigate suggestions
+- `Enter` - Accept selected suggestion
+- `Esc` - Dismiss suggestions
+
+### Custom Templates
+Create your own suggestion templates:
+
+```typescript
+import { TemplateManager } from '@0xkobold/pi-suggest';
+
+const manager = new TemplateManager();
+manager.addTemplate({
+  name: "my-template",
+  template: "Run tests for {module}",
+  intent: ["IMPLEMENT"],
+});
+```
+
+### Team Sharing
+Share suggestion configurations across your team via JSON:
+
+```bash
+# Export team config
+/suggest export > team-config.json
+
+# Import team config
+/suggest import < team-config.json
+```
+
 ## Learning (Phase 3)
 
 pi-suggest learns from your behavior to improve suggestions:
@@ -99,6 +150,10 @@ Based on @guwidoe/pi-prompt-suggester:
 | `SuggestionLearner` | Tracks accepted/dismissed, calculates rates |
 | `PreferenceExtractor` | Extracts user preferences from conversation |
 | `RejectionDetector` | Detects patterns in rejected suggestions |
+| `SuggestionWidget` | Multi-suggestion UI widget |
+| `ShortcutHandler` | Keyboard shortcut management |
+| `TemplateManager` | Custom template management |
+| `TeamConfig` | Team config sharing |
 | `SuggestionStore` | SQLite persistence for tracking |
 
 ## Phases
@@ -108,7 +163,7 @@ Based on @guwidoe/pi-prompt-suggester:
 | Phase 1: Core | ✅ Complete | Session analysis, intent classification, templates |
 | Phase 2: Intelligence | ✅ Complete | LLM generation, file context, patterns |
 | Phase 3: Learning | ✅ Complete | Learning from outcomes, rejection patterns |
-| Phase 4: Polish | 🔜 Future | Proactive suggestions, keyboard shortcuts |
+| Phase 4: Polish | ✅ Complete | Proactive, shortcuts, templates, sharing |
 
 ## License
 
