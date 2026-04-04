@@ -11,6 +11,7 @@ Ghost text prompt suggester for pi-coding-agent. Forked from @guwidoe/pi-prompt-
 - 🤖 **LLM-Powered** - Uses Ollama for smart, contextual suggestions (Phase 2)
 - 📝 **File Context** - Extracts TODOs/FIXMEs from code (Phase 2)
 - 🔍 **Pattern Recognition** - Detects workflow patterns (Phase 2)
+- 📚 **Learning** - Learns from accepted/dismissed suggestions (Phase 3)
 
 ## Install
 
@@ -46,6 +47,7 @@ After an assistant completion, the extension suggests the next user prompt as gh
 - `/suggest ghost` - Show current ghost text
 - `/suggest stats` - Show acceptance/dismissal stats
 - `/suggest configure` - Show LLM configuration
+- `/suggest learn` - Show learning statistics
 
 ### How It Works
 
@@ -53,14 +55,27 @@ After an assistant completion, the extension suggests the next user prompt as gh
 2. **Intent Classification** - Determines user intent (IMPLEMENT, DEBUG, REFACTOR, etc.)
 3. **File Context** - Extracts TODOs/FIXMEs from recent files
 4. **Pattern Recognition** - Detects workflow patterns (create→test→commit)
-5. **LLM Generation** - Generates contextual suggestions (or falls back to templates)
-6. **Ghost Text Display** - Shows suggestion inline in editor
+5. **Learning** - Adapts based on accepted/dismissed suggestions
+6. **LLM Generation** - Generates contextual suggestions (or falls back to templates)
+7. **Ghost Text Display** - Shows suggestion inline in editor
 
 ### User Interaction
 
 - **Press Space** on an empty editor to accept the full suggestion
 - **Type any character** to dismiss the ghost and type normally
 - Suggestions are tracked for acceptance rate analytics
+
+## Learning (Phase 3)
+
+pi-suggest learns from your behavior to improve suggestions:
+
+### What It Learns
+- **Acceptance patterns**: Which suggestions you accept
+- **Rejection patterns**: Which suggestions you dismiss  
+- **Preferences**: Your stated preferences ("I prefer tests first")
+
+### Privacy
+Learning data is stored locally in `~/.0xkobold/pi-suggest/store.db`
 
 ## Architecture
 
@@ -81,8 +96,10 @@ Based on @guwidoe/pi-prompt-suggester:
 | `LlmSuggester` | LLM-powered suggestion generation (Ollama) |
 | `FileContextExtractor` | Extracts TODOs, FIXMEs, functions from code |
 | `PatternRecognizer` | Detects workflow patterns |
+| `SuggestionLearner` | Tracks accepted/dismissed, calculates rates |
+| `PreferenceExtractor` | Extracts user preferences from conversation |
+| `RejectionDetector` | Detects patterns in rejected suggestions |
 | `SuggestionStore` | SQLite persistence for tracking |
-| `SuggestionCache` | In-memory cache for quick access |
 
 ## Phases
 
@@ -90,7 +107,7 @@ Based on @guwidoe/pi-prompt-suggester:
 |-------|--------|-------------|
 | Phase 1: Core | ✅ Complete | Session analysis, intent classification, templates |
 | Phase 2: Intelligence | ✅ Complete | LLM generation, file context, patterns |
-| Phase 3: Learning | 🔜 Next | pi-learn integration for preference learning |
+| Phase 3: Learning | ✅ Complete | Learning from outcomes, rejection patterns |
 | Phase 4: Polish | 🔜 Future | Proactive suggestions, keyboard shortcuts |
 
 ## License

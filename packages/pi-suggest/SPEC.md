@@ -73,7 +73,36 @@ pi-suggest/
 - Confidence scoring
 - Rejection learning (don't suggest what user ignores)
 
-## LLM-Powered Suggestions (Phase 2)
+## Learning Features (Phase 3)
+
+pi-suggest learns from your behavior to improve suggestions over time.
+
+### What It Learns
+
+- **Acceptance patterns**: Which suggestions you accept
+- **Rejection patterns**: Which suggestions you dismiss
+- **Preferences**: Your stated preferences ("I prefer tests first")
+
+### Commands
+
+- `/suggest learn` - Show learning statistics
+- `/suggest stats` - Show acceptance/dismissal rates
+
+### How It Works
+
+1. Tracks every suggestion outcome (accepted/dismissed)
+2. Calculates per-suggestion acceptance rates
+3. Detects patterns in rejections (e.g., "never suggest commits")
+4. Applies boosts/penalties based on learned patterns
+5. Suggests alternatives when patterns are detected
+
+### Privacy
+
+Learning data is stored locally in `~/.0xkobold/pi-suggest/store.db`
+
+## LLM Setup (Optional)
+
+pi-suggest can use a local LLM for smarter suggestions:
 
 pi-suggest can use a local LLM (Ollama) to generate smarter, more contextual suggestions.
 
@@ -241,10 +270,10 @@ interface PiSuggestConfig {
 - [x] Confidence scoring
 
 ### Phase 3: Learning
-- [ ] pi-learn integration
-- [ ] Preference learning
-- [ ] Rejection pattern detection
-- [ ] Cross-session memory
+- [x] SuggestionLearner - Track outcomes, calculate acceptance rates
+- [x] Preference learning - Extract preferences from conversation
+- [x] Rejection pattern detection - Detect patterns in rejected suggestions
+- [x] Cross-session memory - Via SQLite persistence
 
 ### Phase 4: Polish
 - [ ] Proactive suggestions
