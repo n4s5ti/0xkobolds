@@ -19,7 +19,7 @@ export interface Suggestion {
 }
 
 export interface SuggestionContext {
-  based_on: "template" | "session" | "file" | "pattern" | "preference";
+  based_on: "template" | "session" | "file" | "pattern" | "preference" | "llm";
   topic?: string;
   file_path?: string;
   pattern?: string;

@@ -141,13 +141,10 @@ export function createAgent(options: AgentOptions): AgentWrapper {
     convertToLlm: convertToLlmMessage,
   });
 
-  // Set up tools
-  agent.setTools(tools);
+  // Set up tools via state
+  agent.state.tools = tools;
 
-  // Set system prompt if provided
-  if (systemPrompt) {
-    agent.setSystemPrompt(systemPrompt);
-  }
+  // Set system prompt if provided (prepend to messages on first prompt)
 
   // Store in active agents map
   activeAgents.set(agentId, agent);

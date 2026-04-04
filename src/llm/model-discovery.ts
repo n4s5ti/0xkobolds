@@ -183,7 +183,7 @@ class ModelDiscoveryService {
 
     if (existsSync(configPath)) {
       try {
-        const config = await import(configPath, { assert: { type: 'json' } });
+        const config = await import(configPath, { with: { type: 'json' } });
         apiKey = config.default?.ollama?.apiKey || config.ollama?.apiKey;
       } catch {
         // Ignore config read errors

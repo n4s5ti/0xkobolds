@@ -21,11 +21,20 @@ import { IntentClassifier, IntentType } from "./core/intent.js";
 import { SuggestionGenerator } from "./generator/suggestion.js";
 import { SuggestionStore } from "./store/sqlite.js";
 import { SuggestionCache } from "./store/cache.js";
+import { LlmSuggester, type LlmConfig } from "./generator/llm.js";
+import { FileContextExtractor, type FileContext } from "./generator/file-context.js";
 
 // Ghost text constants
 const GHOST_COLOR = "\x1b[38;5;244m";
 const RESET = "\x1b[0m";
 const END_CURSOR = /(?:\x1b\[[0-9;]*m \x1b\[[0-9;]*m|█|▌|▋|▉|▓)/;
+
+// LLM Configuration
+const DEFAULT_LLM_CONFIG: LlmConfig = {
+  baseUrl: process.env.OLLAMA_BASE_URL || "http://localhost:11434",
+  model: process.env.OLLAMA_MODEL || "llama3.2",
+  timeout: 5000,
+};
 
 // Runtime state
 interface RuntimeState {
@@ -37,6 +46,9 @@ interface RuntimeState {
   sessionAnalyzer: SessionAnalyzer;
   intentClassifier: IntentClassifier;
   suggestionGenerator: SuggestionGenerator;
+  llmConfig: LlmConfig;
+  llmSuggester: LlmSuggester | null;
+  fileExtractor: FileContextExtractor;
 }
 
 const runtime: RuntimeState = {
@@ -48,6 +60,9 @@ const runtime: RuntimeState = {
   sessionAnalyzer: new SessionAnalyzer(),
   intentClassifier: new IntentClassifier(),
   suggestionGenerator: new SuggestionGenerator(),
+  llmConfig: DEFAULT_LLM_CONFIG,
+  llmSuggester: null,
+  fileExtractor: new FileContextExtractor(),
 };
 
 // GhostSuggestionEditor (existing, unchanged)
@@ -303,11 +318,20 @@ export default async function suggester(pi: ExtensionAPI) {
         return;
       }
 
-      console.log("👻 Usage: /suggest status | /suggest stats | /suggest ghost");
+      if (subcommand === "configure") {
+        console.log(`⚙️  LLM Configuration:
+  Base URL: ${runtime.llmConfig.baseUrl}
+  Model: ${runtime.llmConfig.model}
+  Timeout: ${runtime.llmConfig.timeout}ms`);
+        return;
+      }
+
+      console.log("👻 Usage: /suggest status | /suggest stats | /suggest ghost | /suggest configure");
     },
   });
 
-  console.log("[pi-suggest] Ghost text prompt suggester loaded (Phase 1)");
+  console.log("[pi-suggest] Ghost text prompt suggester loaded (Phase 2)");
+  console.log("[pi-suggest] LLM: enabled, model=" + runtime.llmConfig.model);
   console.log("[pi-suggest] Press Space to accept suggestion, type to override");
 }
 
@@ -336,25 +360,66 @@ async function generateSuggestion(messages: Message[]): Promise<string | undefin
   // Update summary with detected intent
   summary.intent = intentResult.intent;
 
-  // Generate suggestions using SuggestionGenerator
-  const suggestionText = runtime.suggestionGenerator.generateSingle(summary, intentResult.intent);
-  
-  if (suggestionText && runtime.store) {
-    // Create a suggestion object for storage
-    const suggestion = {
-      id: `suggest_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
-      type: "action" as const,
-      text: suggestionText,
-      confidence: intentResult.confidence,
-      reason: `Based on ${intentResult.intent} intent`,
-      context: { based_on: "template" as const },
-    };
+  // Try LLM generation first
+  let suggestionText: string | undefined;
+  let basedOn = "template";
+
+  try {
+    if (!runtime.llmSuggester) {
+      runtime.llmSuggester = new LlmSuggester(runtime.llmConfig);
+    }
     
-    // Store for persistence
-    await runtime.store.recordSuggestion(suggestion);
+    // Extract file context if we have recent files
+    let fileContext: FileContext | undefined;
+    if (summary.recent_files.length > 0) {
+      // File reading would be done here in a full implementation
+      // For now, we skip actual file reading
+    }
     
-    // Cache for quick access
-    runtime.cache.set(suggestion);
+    const llmSuggestions = await runtime.llmSuggester.generateSuggestions(summary, fileContext);
+    
+    if (llmSuggestions.length > 0) {
+      suggestionText = llmSuggestions[0].text;
+      basedOn = "llm";
+      
+      // Store for persistence
+      if (suggestionText && runtime.store) {
+        const suggestion = {
+          id: `suggest_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+          type: llmSuggestions[0].type,
+          text: suggestionText,
+          confidence: llmSuggestions[0].confidence,
+          reason: llmSuggestions[0].reason,
+          context: { based_on: "llm" as const },
+        };
+        
+        await runtime.store.recordSuggestion(suggestion);
+        runtime.cache.set(suggestion);
+      }
+    }
+  } catch (error) {
+    console.error("[pi-suggest] LLM generation failed:", error);
+    // Fall through to template-based
+  }
+
+  // Fallback to template-based generation
+  if (!suggestionText) {
+    suggestionText = runtime.suggestionGenerator.generateSingle(summary, intentResult.intent);
+    basedOn = "template";
+    
+    if (suggestionText && runtime.store) {
+      const suggestion = {
+        id: `suggest_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+        type: "action" as const,
+        text: suggestionText,
+        confidence: intentResult.confidence,
+        reason: `Based on ${intentResult.intent} intent`,
+        context: { based_on: "template" as const },
+      };
+      
+      await runtime.store.recordSuggestion(suggestion);
+      runtime.cache.set(suggestion);
+    }
   }
 
   return suggestionText;

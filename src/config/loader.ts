@@ -72,7 +72,7 @@ const DEFAULT_CONFIG: KoboldConfig = {
   extensions: {
     enabled: [
       "persona-loader",
-      "context-aware",
+      // "context-aware",  // REMOVED: extension does not exist
       "heartbeat",
       "task-manager",
       "mcp",

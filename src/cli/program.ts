@@ -5,7 +5,7 @@
  */
 
 import { Command } from "commander";
-import { version } from "../../package.json" assert { type: "json" };
+import { version } from "../../package.json" with { type: "json" };
 
 // Core commands
 import { createStartCommand } from "./commands/start.js";

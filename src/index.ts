@@ -215,28 +215,30 @@ function verifyExtensions(): string[] {
     // '--extension', ext('autonomous-subagent-extension'),
     
     // Core Features
-    '--extension', ext('persona-loader-extension'),
-    '--extension', ext('context-aware-extension'),
     '--extension', ext('onboarding-extension'),
-    '--extension', ext('session-name-extension'),
-    '--extension', ext('env-loader-extension'),
     '--extension', ext('heartbeat-extension'),
     '--extension', ext('discord-channel-extension'),
     '--extension', ext('task-manager-extension'),
-    // Context management (OpenClaw-style)
-    '--extension', ext('context-pruning/extension'),
-    '--extension', ext('compaction-safeguard'),
-    '--extension', ext('auto-compact-on-error-extension'),
     
     // Multi-Channel
     '--extension', ext('multi-channel-extension'),
     '--extension', ext('discord-extension'),
     
-    // Safety extensions (pi-mono)
-    '--extension', ext('protected-paths'),
-    '--extension', ext('confirm-destructive'),
-    '--extension', ext('dirty-repo-guard'),
-    '--extension', ext('git-checkpoint'),
+    // Safety extensions (consolidated in draconic-safety-extension)
+    // REMOVED extensions (commented out for reference):
+    // '--extension', ext('context-aware-extension'),
+    // '--extension', ext('session-name-extension'),
+    // '--extension', ext('env-loader-extension'),
+    // '--extension', ext('context-pruning/extension'),
+    // '--extension', ext('compaction-safeguard'),
+    // '--extension', ext('auto-compact-on-error-extension'),
+    // '--extension', ext('protected-paths'),
+    // '--extension', ext('confirm-destructive'),
+    // '--extension', ext('dirty-repo-guard'),
+    // '--extension', ext('git-checkpoint'),
+    // '--extension', ext('agent-workspace-extension'),
+    // '--extension', ext('memory-extension'),
+    // '--extension', ext('memory-synthesis-extension'),
 
     // Draconic Extensions (v0.2.0+)
     '--extension', ext('draconic-hoard-extension'),
@@ -248,14 +250,7 @@ function verifyExtensions(): string[] {
     '--extension', ext('mcp-extension'),
     '--extension', ext('gateway-extension'),
     '--extension', ext('gateway-status-extension'),
-    // Agent workspace provides advanced_web_fetch tool
-    '--extension', ext('agent-workspace-extension'),
-    // Deprecated: Use agent-orchestrator-extension instead
-    // '--extension', ext('agent-lifecycle-extension'),
-    // '--extension', ext('autonomous-subagent-extension'),
-    // '--extension', ext('agent-registry-extension'),
     '--extension', ext('websearch-enhanced-extension'),
-    '--extension', ext('memory-extension'),
     // Memory & Learning (via pi-learn npm package)
     '--extension', findPiLearnExtension(),
     // 📓 Obsidian Bridge (local vault sync)
@@ -264,9 +259,7 @@ function verifyExtensions(): string[] {
     '--extension', findCloudflareBrowserExtension(),
     // 🔌 Pi Bridge (migrate ~/.pi to ~/.0xkobold, load pi extensions)
     '--extension', findPiBridgeExtension(),
-    // Legacy memory (to be deprecated)
     '--extension', ext('diagnostics-extension'),
-    '--extension', ext('memory-synthesis-extension'),
     '--extension', ext('workspace-footer-extension'),
     // Deprecated: Use agent-orchestrator-extension instead
     // '--extension', ext('subagent-extension'),

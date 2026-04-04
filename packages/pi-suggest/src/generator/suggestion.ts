@@ -13,7 +13,7 @@ export interface Suggestion {
   confidence: number;
   reason: string;
   context: {
-    based_on: "template" | "session" | "file" | "pattern" | "preference";
+    based_on: "template" | "session" | "file" | "pattern" | "preference" | "llm";
     topic?: string;
     file_path?: string;
     pattern?: string;
