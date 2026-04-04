@@ -1,60 +1,62 @@
 /**
- * pi-suggest - Ghost Text Prompt Suggester
+ * pi-suggest - Context-Aware Suggestion Engine
  * 
- * Forked from @guwidoe/pi-prompt-suggester architecture
- * Suggests user's likely next prompt as ghost text in the editor.
- * Press Space to accept, type to override.
+ * Phase 1 Implementation: Session analysis, intent classification,
+ * template-based suggestions, and SQLite persistence.
  */
 
 import { CustomEditor } from "@mariozechner/pi-coding-agent";
 import { Key, matchesKey, truncateToWidth, wrapTextWithAnsi } from "@mariozechner/pi-tui";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
+// Message type definition
+interface Message {
+  role: "user" | "assistant" | "system";
+  content: string;
+}
+
+// Core modules
+import { SessionAnalyzer } from "./core/session.js";
+import { IntentClassifier, IntentType } from "./core/intent.js";
+import { SuggestionGenerator } from "./generator/suggestion.js";
+import { SuggestionStore } from "./store/sqlite.js";
+import { SuggestionCache } from "./store/cache.js";
+
+// Ghost text constants
 const GHOST_COLOR = "\x1b[38;5;244m";
 const RESET = "\x1b[0m";
-
-// Cursor rendering varies across themes/terminal modes
 const END_CURSOR = /(?:\x1b\[[0-9;]*m \x1b\[[0-9;]*m|█|▌|▋|▉|▓)/;
 
+// Runtime state
+interface RuntimeState {
+  currentContext: ExtensionContext | undefined;
+  currentSuggestion: string | undefined;
+  suggestionRevision: number;
+  cache: SuggestionCache;
+  store: SuggestionStore | undefined;
+  sessionAnalyzer: SessionAnalyzer;
+  intentClassifier: IntentClassifier;
+  suggestionGenerator: SuggestionGenerator;
+}
+
+const runtime: RuntimeState = {
+  currentContext: undefined,
+  currentSuggestion: undefined,
+  suggestionRevision: 0,
+  cache: new SuggestionCache(),
+  store: undefined,
+  sessionAnalyzer: new SessionAnalyzer(),
+  intentClassifier: new IntentClassifier(),
+  suggestionGenerator: new SuggestionGenerator(),
+};
+
+// GhostSuggestionEditor (existing, unchanged)
 interface GhostState {
   text: string;
   suggestion: string;
   suffix: string;
   suffixLines: string[];
   multiline: boolean;
-}
-
-class RuntimeRef {
-  private currentContext: ExtensionContext | undefined;
-  private generationEpoch = 0;
-  private currentSuggestion: string | undefined;
-  private suggestionRevision = 0;
-
-  public setContext(ctx: ExtensionContext): void {
-    this.currentContext = ctx;
-  }
-
-  public getContext(): ExtensionContext | undefined {
-    return this.currentContext;
-  }
-
-  public bumpEpoch(): number {
-    this.generationEpoch += 1;
-    return this.generationEpoch;
-  }
-
-  public setSuggestion(text: string | undefined): void {
-    this.currentSuggestion = text?.trim() || undefined;
-    this.suggestionRevision += 1;
-  }
-
-  public getSuggestion(): string | undefined {
-    return this.currentSuggestion;
-  }
-
-  public getSuggestionRevision(): number {
-    return this.suggestionRevision;
-  }
 }
 
 export class GhostSuggestionEditor extends CustomEditor {
@@ -76,10 +78,14 @@ export class GhostSuggestionEditor extends CustomEditor {
   public override handleInput(data: string): void {
     const ghost = this.getGhostState();
 
-    // Accept ghost suggestion with Space when editor is still empty
     if (ghost && ghost.text.length === 0) {
       if (matchesKey(data, Key.space)) {
         this.setText(ghost.suggestion);
+        // Record acceptance
+        const latest = runtime.cache.getLatest();
+        if (latest && runtime.store) {
+          runtime.store.recordOutcome(latest.id, "accepted").catch(console.error);
+        }
         return;
       }
       this.suppressGhost = true;
@@ -144,6 +150,11 @@ export class GhostSuggestionEditor extends CustomEditor {
     const text = this.getText();
 
     if (text.length > 0) {
+      // User typed something - mark latest suggestion as dismissed
+      const latest = runtime.cache.getLatest();
+      if (latest && runtime.store) {
+        runtime.store.recordOutcome(latest.id, "dismissed").catch(console.error);
+      }
       this.suppressGhostArmedByNonEmptyText = true;
       return;
     }
@@ -185,10 +196,12 @@ export class GhostSuggestionEditor extends CustomEditor {
   }
 }
 
-// Export the suggester extension
-const runtimeRef = new RuntimeRef();
+// Extension entry point
+export default async function suggester(pi: ExtensionAPI) {
+  // Initialize store
+  runtime.store = new SuggestionStore();
+  await runtime.store.init();
 
-export default function suggester(pi: ExtensionAPI) {
   function installGhostEditor(ctx: ExtensionContext): void {
     if (!ctx.hasUI) return;
     
@@ -197,8 +210,8 @@ export default function suggester(pi: ExtensionAPI) {
         tui,
         theme,
         kb,
-        () => runtimeRef.getSuggestion(),
-        () => runtimeRef.getSuggestionRevision(),
+        () => runtime.currentSuggestion,
+        () => runtime.suggestionRevision,
       ),
     );
   }
@@ -207,17 +220,16 @@ export default function suggester(pi: ExtensionAPI) {
     const delaysMs = [50, 250, 1000, 3000, 8000];
     for (const delay of delaysMs) {
       setTimeout(() => {
-        const active = runtimeRef.getContext();
-        if (active !== ctx) return;
+        if (runtime.currentContext !== ctx) return;
         installGhostEditor(ctx);
       }, delay);
     }
   }
 
-  // Register session start handler
+  // Session start handler
   pi.on("session_start", async (_event: any, ctx: ExtensionContext) => {
-    runtimeRef.setContext(ctx);
-    runtimeRef.bumpEpoch();
+    runtime.currentContext = ctx;
+    runtime.suggestionRevision++;
 
     if (ctx.hasUI) {
       installGhostEditor(ctx);
@@ -225,41 +237,42 @@ export default function suggester(pi: ExtensionAPI) {
     }
   });
 
-  // Register agent end handler - generate suggestion
+  // Agent end handler - generate suggestion
   pi.on("agent_end", async (event: any, ctx: ExtensionContext) => {
-    runtimeRef.setContext(ctx);
+    runtime.currentContext = ctx;
     
     if (ctx.hasUI) {
       installGhostEditor(ctx);
     }
 
-    // Generate suggestion based on conversation context
     try {
-      const messages = event.messages || [];
+      const messages: Message[] = event.messages || [];
       const suggestion = await generateSuggestion(messages);
+      
       if (suggestion) {
-        runtimeRef.setSuggestion(suggestion);
+        runtime.currentSuggestion = suggestion;
+        runtime.suggestionRevision++;
       }
     } catch (error) {
       console.error("[pi-suggest] Error generating suggestion:", error);
     }
   });
 
-  // Register user submit handler
-  pi.on("input", async (event: any, ctx: ExtensionContext) => {
-    runtimeRef.setContext(ctx);
-    runtimeRef.bumpEpoch();
+  // User submit handler
+  pi.on("input", async (_event: any, ctx: ExtensionContext) => {
+    runtime.currentContext = ctx;
+    runtime.suggestionRevision++;
   });
 
   // Register commands
   pi.registerCommand("suggest", {
-    description: "suggester controls: status | reseed | ghost",
-    handler: async (args: string, ctx: ExtensionContext) => {
+    description: "suggester controls: status | stats | ghost",
+    handler: async (args: string, _ctx: ExtensionContext) => {
       const trimmed = args.trim();
       const [subcommand, ...rest] = trimmed.length > 0 ? trimmed.split(/\s+/) : ["status"];
 
       if (subcommand === "status") {
-        const suggestion = runtimeRef.getSuggestion();
+        const suggestion = runtime.currentSuggestion;
         if (suggestion) {
           console.log(`👻 Suggestion ready:\n\`\`\`\n${suggestion}\n\`\`\`\nPress Space to accept, or type to override`);
         } else {
@@ -268,55 +281,87 @@ export default function suggester(pi: ExtensionAPI) {
         return;
       }
 
-      if (subcommand === "ghost") {
-        const action = rest.join(" ");
-        if (action === "on" || action === "enable") {
-          console.log("👻 Ghost text enabled");
-        } else if (action === "off" || action === "disable") {
-          console.log("👻 Ghost text disabled");
-        } else {
-          const suggestion = runtimeRef.getSuggestion();
-          if (suggestion) {
-            console.log(`👻 Current ghost:\n\`\`\`\n${suggestion}\n\`\`\``);
-          } else {
-            console.log("👻 No ghost text available");
-          }
+      if (subcommand === "stats") {
+        const stats = await runtime.store?.getStats();
+        if (stats) {
+          console.log(`📊 Suggestion Stats:
+  Total: ${stats.total_suggestions}
+  Accepted: ${stats.accepted_count}
+  Dismissed: ${stats.dismissed_count}
+  Acceptance Rate: ${(stats.acceptance_rate * 100).toFixed(1)}%`);
         }
         return;
       }
 
-      console.log("👻 Usage: /suggest status | /suggest ghost");
+      if (subcommand === "ghost") {
+        const suggestion = runtime.currentSuggestion;
+        if (suggestion) {
+          console.log(`👻 Current ghost:\n\`\`\`\n${suggestion}\n\`\`\``);
+        } else {
+          console.log("👻 No ghost text available");
+        }
+        return;
+      }
+
+      console.log("👻 Usage: /suggest status | /suggest stats | /suggest ghost");
     },
   });
 
-  console.log("[pi-suggest] Ghost text prompt suggester loaded");
+  console.log("[pi-suggest] Ghost text prompt suggester loaded (Phase 1)");
   console.log("[pi-suggest] Press Space to accept suggestion, type to override");
 }
 
 /**
  * Generate a suggestion based on conversation messages
  */
-async function generateSuggestion(messages: any[]): Promise<string | undefined> {
+async function generateSuggestion(messages: Message[]): Promise<string | undefined> {
   if (!messages || messages.length === 0) return undefined;
 
   // Extract recent user prompts
   const recentPrompts = messages
     .filter((m) => m.role === "user")
-    .slice(-3)
+    .slice(-5)
     .map((m) => m.content)
     .filter((content): content is string => typeof content === "string" && content.length > 0);
 
   if (recentPrompts.length === 0) return undefined;
 
-  // Simple heuristic-based suggestion generation
-  const lastPrompt = recentPrompts[recentPrompts.length - 1];
-  const suggestion = inferNextPrompt(lastPrompt, recentPrompts);
+  // Analyze session using SessionAnalyzer
+  const summary = runtime.sessionAnalyzer.summarize(messages as any);
   
-  return suggestion;
+  // Classify intent using IntentClassifier
+  const lastPrompt = recentPrompts[recentPrompts.length - 1];
+  const intentResult = runtime.intentClassifier.classifyWithConfidence(lastPrompt);
+  
+  // Update summary with detected intent
+  summary.intent = intentResult.intent;
+
+  // Generate suggestions using SuggestionGenerator
+  const suggestionText = runtime.suggestionGenerator.generateSingle(summary, intentResult.intent);
+  
+  if (suggestionText && runtime.store) {
+    // Create a suggestion object for storage
+    const suggestion = {
+      id: `suggest_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+      type: "action" as const,
+      text: suggestionText,
+      confidence: intentResult.confidence,
+      reason: `Based on ${intentResult.intent} intent`,
+      context: { based_on: "template" as const },
+    };
+    
+    // Store for persistence
+    await runtime.store.recordSuggestion(suggestion);
+    
+    // Cache for quick access
+    runtime.cache.set(suggestion);
+  }
+
+  return suggestionText;
 }
 
 /**
- * Infer the next prompt based on context
+ * Legacy inference function for backward compatibility
  */
 export function inferNextPrompt(lastPrompt: string, history: string[]): string | undefined {
   if (typeof lastPrompt !== "string" || lastPrompt.length === 0) return undefined;
