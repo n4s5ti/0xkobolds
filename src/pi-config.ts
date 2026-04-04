@@ -127,6 +127,7 @@ export const config: Config = {
     ext('@0xkobold/pi-wallet'),
     ext('@0xkobold/pi-erc8004'),
     ext('@0xkobold/pi-gateway'),
+    ext('@0xkobold/pi-suggest'),
   ],
 
   keybindings: {
