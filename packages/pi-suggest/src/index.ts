@@ -23,6 +23,9 @@ import { SuggestionStore } from "./store/sqlite.js";
 import { SuggestionCache } from "./store/cache.js";
 import { LlmSuggester, type LlmConfig } from "./generator/llm.js";
 import { FileContextExtractor, type FileContext } from "./generator/file-context.js";
+import { SuggestionLearner } from "./learn/learner.js";
+import { PreferenceExtractor } from "./learn/preferences.js";
+import { RejectionPatternDetector } from "./learn/rejections.js";
 
 // Ghost text constants
 const GHOST_COLOR = "\x1b[38;5;244m";
@@ -49,6 +52,10 @@ interface RuntimeState {
   llmConfig: LlmConfig;
   llmSuggester: LlmSuggester | null;
   fileExtractor: FileContextExtractor;
+  // Learning modules
+  learner: SuggestionLearner;
+  preferenceExtractor: PreferenceExtractor;
+  rejectionDetector: RejectionPatternDetector;
 }
 
 const runtime: RuntimeState = {
@@ -63,6 +70,10 @@ const runtime: RuntimeState = {
   llmConfig: DEFAULT_LLM_CONFIG,
   llmSuggester: null,
   fileExtractor: new FileContextExtractor(),
+  // Learning modules
+  learner: new SuggestionLearner(),
+  preferenceExtractor: new PreferenceExtractor(),
+  rejectionDetector: new RejectionPatternDetector(),
 };
 
 // GhostSuggestionEditor (existing, unchanged)
@@ -326,12 +337,31 @@ export default async function suggester(pi: ExtensionAPI) {
         return;
       }
 
-      console.log("👻 Usage: /suggest status | /suggest stats | /suggest ghost | /suggest configure");
+      if (subcommand === "learn") {
+        const stats = runtime.learner.getStats();
+        const patterns = runtime.rejectionDetector.detectPatterns();
+        
+        console.log(`📚 Learning Stats:
+  Total suggestions: ${stats.total}
+  Acceptance rate: ${(stats.acceptanceRate * 100).toFixed(1)}%
+  
+  Rejection patterns: ${patterns.length}`);
+        
+        if (patterns.length > 0) {
+          console.log("\nTop patterns:");
+          for (const p of patterns.slice(0, 3)) {
+            console.log(`  - ${p.category}: ${p.count} rejections (${(p.confidence * 100).toFixed(0)}% confident)`);
+          }
+        }
+        return;
+      }
+
+      console.log("👻 Usage: /suggest status | /suggest stats | /suggest ghost | /suggest configure | /suggest learn");
     },
   });
 
-  console.log("[pi-suggest] Ghost text prompt suggester loaded (Phase 2)");
-  console.log("[pi-suggest] LLM: enabled, model=" + runtime.llmConfig.model);
+  console.log("[pi-suggest] Ghost text prompt suggester loaded (Phase 3)");
+  console.log("[pi-suggest] Learning: enabled");
   console.log("[pi-suggest] Press Space to accept suggestion, type to override");
 }
 
@@ -363,6 +393,7 @@ async function generateSuggestion(messages: Message[]): Promise<string | undefin
   // Try LLM generation first
   let suggestionText: string | undefined;
   let basedOn = "template";
+  let confidence = intentResult.confidence;
 
   try {
     if (!runtime.llmSuggester) {
@@ -381,21 +412,7 @@ async function generateSuggestion(messages: Message[]): Promise<string | undefin
     if (llmSuggestions.length > 0) {
       suggestionText = llmSuggestions[0].text;
       basedOn = "llm";
-      
-      // Store for persistence
-      if (suggestionText && runtime.store) {
-        const suggestion = {
-          id: `suggest_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
-          type: llmSuggestions[0].type,
-          text: suggestionText,
-          confidence: llmSuggestions[0].confidence,
-          reason: llmSuggestions[0].reason,
-          context: { based_on: "llm" as const },
-        };
-        
-        await runtime.store.recordSuggestion(suggestion);
-        runtime.cache.set(suggestion);
-      }
+      confidence = llmSuggestions[0].confidence;
     }
   } catch (error) {
     console.error("[pi-suggest] LLM generation failed:", error);
@@ -406,20 +423,45 @@ async function generateSuggestion(messages: Message[]): Promise<string | undefin
   if (!suggestionText) {
     suggestionText = runtime.suggestionGenerator.generateSingle(summary, intentResult.intent);
     basedOn = "template";
-    
-    if (suggestionText && runtime.store) {
-      const suggestion = {
-        id: `suggest_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
-        type: "action" as const,
-        text: suggestionText,
-        confidence: intentResult.confidence,
-        reason: `Based on ${intentResult.intent} intent`,
-        context: { based_on: "template" as const },
-      };
-      
-      await runtime.store.recordSuggestion(suggestion);
-      runtime.cache.set(suggestion);
+    confidence = intentResult.confidence;
+  }
+
+  // Apply learning: check if we should avoid this suggestion
+  if (suggestionText && runtime.rejectionDetector.shouldAvoid(suggestionText)) {
+    // Try alternative or penalize
+    const alternative = runtime.learner.getAlternativeSuggestion(suggestionText);
+    if (alternative) {
+      suggestionText = alternative;
+      confidence *= 0.8; // Penalize alternative too
     }
+  }
+
+  // Apply learning boost/penalty
+  if (suggestionText) {
+    const boost = runtime.learner.getSuggestionBoost(suggestionText);
+    confidence *= boost;
+  }
+
+  // Store for persistence
+  if (suggestionText && runtime.store) {
+    const suggestion = {
+      id: `suggest_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+      type: "action" as const,
+      text: suggestionText,
+      confidence,
+      reason: `Based on ${intentResult.intent} intent`,
+      context: { based_on: basedOn as "template" | "llm" },
+    };
+    
+    await runtime.store.recordSuggestion(suggestion);
+    runtime.cache.set(suggestion);
+    
+    // Record for learning
+    runtime.learner.recordOutcome({
+      suggestion: suggestionText,
+      type: "action",
+      accepted: false, // Will be updated when user accepts/dismisses
+    });
   }
 
   return suggestionText;
