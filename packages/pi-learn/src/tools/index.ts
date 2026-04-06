@@ -225,7 +225,7 @@ export function createToolExecutors(deps: {
   contextAssembler: ContextAssembler;
   reasoningEngine: ReasoningEngine;
   config: ToolsConfig;
-  runDream: (scope?: 'user' | 'project') => Promise<void>;
+  runDream: (scope?: 'user' | 'project', notify?: (message: string, type?: 'info' | 'warning' | 'error') => void) => Promise<{ userScopeCount: number; projectScopeCount: number; totalConclusions: number }>;
 }) {
   const { store, contextAssembler, reasoningEngine, config, runDream } = deps;
 
@@ -402,9 +402,9 @@ export function createToolExecutors(deps: {
         ctx.ui.setStatus("learn", "Dreaming...");
         // runDream accepts scope parameter: 'project' or 'user'
         const scope = (params.scope as 'project' | 'user') || 'project';
-        await runDream(scope);
+        const result = await runDream(scope);
         const dreamMeta = store.getDreamMetadata(scope === 'user' ? "__global__" : config.workspaceId);
-        return { content: [{ type: "text" as const, text: `Dream cycle complete (${scope} scope). ${dreamMeta.lastDreamConclusions} conclusions generated.` }], details: { success: true, scope, dreamMeta } };
+        return { content: [{ type: "text" as const, text: `Dream cycle complete (${scope} scope). ${result.totalConclusions} conclusions generated.` }], details: { success: true, scope, dreamMeta, ...result } };
       }) as ToolExecute<any>,
     },
     learn_prune: {

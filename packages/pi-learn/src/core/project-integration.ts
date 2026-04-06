@@ -9,7 +9,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import type { SQLiteStore } from "./store.js";
 
 // Project info from pi-project (mirrored from pi-project/index.ts)
-interface ProjectInfo {
+export interface ProjectInfo {
   id: string;
   name: string;
   path: string;
@@ -112,7 +112,9 @@ export function getCurrentProjectInfo(): ProjectInfo | null {
   return cachedProject;
 }
 
-export function createProjectContextSnippet(project: ProjectInfo): string {
+export function createProjectContextSnippet(
+  project: { id: string; name: string; path: string; repo?: { remote: string; owner?: string; name?: string; branch?: string }; stack?: string[]; detectedAt?: number }
+): string {
   const parts = [
     `Current Project: ${project.name}`,
     `Path: ${project.path}`,

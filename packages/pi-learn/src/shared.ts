@@ -208,6 +208,7 @@ export const DEFAULT_DREAM: DreamConfig = {
 // ============================================================================
 
 export const DEFAULT_TOKEN_BATCH_SIZE = 1000;
+export const DEFAULT_CONCURRENCY = 1;
 export const SHORT_SUMMARY_INTERVAL = 20;
 export const LONG_SUMMARY_INTERVAL = 60;
 export const DEFAULT_EMBEDDING_MODEL = "nomic-embed-text-v2-moe:latest";

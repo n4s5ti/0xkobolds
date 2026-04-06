@@ -38,20 +38,29 @@ export class SQLiteStore {
   private saveTimer: NodeJS.Timeout | null = null;
 
   constructor(dbPath: string) {
+    console.assert(dbPath !== null, 'dbPath must not be null');
+    console.assert(typeof dbPath === 'string', 'dbPath must be string');
+    console.assert(dbPath.length > 0, 'dbPath must not be empty');
     this.dbPath = dbPath;
   }
 
   async init(): Promise<void> {
+    console.assert(this.db === null, 'db should not be initialized twice');
+    
     const SQL = await initSqlJs();
+    console.assert(SQL !== null, 'SQL.js initialization failed');
     
     // Load existing database or create new one
     if (existsSync(this.dbPath)) {
       const buffer = readFileSync(this.dbPath);
+      console.assert(buffer !== null, 'failed to read database file');
       this.db = new SQL.Database(buffer);
     } else {
       this.db = new SQL.Database();
+      console.assert(this.db !== null, 'failed to create new database');
     }
     
+    console.assert(this.db !== null, 'database must be initialized');
     this.db.exec("PRAGMA journal_mode = WAL");
     this.db.exec("PRAGMA foreign_keys = OFF");
     this.initTables();
@@ -350,20 +359,34 @@ export class SQLiteStore {
 
   // Workspace
   getWorkspace(id: string): Workspace | null {
+    console.assert(id !== null, 'id must not be null');
+    console.assert(typeof id === 'string', 'id must be string');
+    console.assert(id.length > 0, 'id must not be empty');
+    
     const row = this.getOne("SELECT * FROM workspaces WHERE id = ?", [id]);
     if (!row) return null;
     return { id: row.id, name: row.name, createdAt: row.created_at, config: JSON.parse(row.config || "{}") };
   }
 
   saveWorkspace(workspace: Workspace): void {
+    console.assert(workspace !== null, 'workspace must not be null');
+    console.assert(workspace.id !== null, 'workspace.id must not be null');
+    console.assert(typeof workspace.name === 'string', 'workspace.name must be string');
+    
     this.run(
       `INSERT OR REPLACE INTO workspaces (id, name, created_at, config) VALUES (?, ?, ?, ?)`,
       [workspace.id, workspace.name, workspace.createdAt, JSON.stringify(workspace.config)]
     );
   }
 
+
   // Peer
   getPeer(workspaceId: string, peerId: string): Peer | null {
+    console.assert(workspaceId !== null, 'workspaceId must not be null');
+    console.assert(peerId !== null, 'peerId must not be null');
+    console.assert(typeof workspaceId === 'string', 'workspaceId must be string');
+    console.assert(typeof peerId === 'string', 'peerId must be string');
+    
     const row = this.getOne("SELECT * FROM peers WHERE id = ? AND workspace_id = ?", [peerId, workspaceId]);
     if (!row) return null;
     return { id: row.id, name: row.name, type: row.type, createdAt: row.created_at, metadata: JSON.parse(row.metadata || "{}") };
@@ -473,15 +496,27 @@ export class SQLiteStore {
 
   // Messages
   saveMessage(workspaceId: string, message: { id: string; sessionId: string; peerId: string; role: string; content: string; createdAt: number; metadata?: Record<string, unknown> }): void {
+    console.assert(workspaceId !== null, 'workspaceId must not be null');
+    console.assert(message !== null, 'message must not be null');
+    console.assert(message.id !== null, 'message.id must not be null');
+    console.assert(message.content !== null, 'message.content must not be null');
+    
     this.run(
       `INSERT INTO messages (id, session_id, workspace_id, peer_id, role, content, metadata, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [message.id, message.sessionId, workspaceId, message.peerId, message.role, message.content, JSON.stringify(message.metadata || {}), message.createdAt]
     );
   }
 
+
   // Batch message creation - efficient insert of multiple messages
   saveMessagesBatch(workspaceId: string, messages: Array<{ id: string; sessionId: string; peerId: string; role: string; content: string; createdAt: number; metadata?: Record<string, unknown> }>): number {
+    console.assert(Array.isArray(messages), 'messages must be array');
+    console.assert(messages.length > 0, 'messages must not be empty');
+    
     for (const msg of messages) {
+      console.assert(msg.id !== null, 'message id must not be null');
+      console.assert(msg.content !== null, 'message content must not be null');
+      
       this.run(
         `INSERT INTO messages (id, session_id, workspace_id, peer_id, role, content, metadata, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [msg.id, msg.sessionId, workspaceId, msg.peerId, msg.role, msg.content, JSON.stringify(msg.metadata || {}), msg.createdAt]
@@ -491,15 +526,33 @@ export class SQLiteStore {
   }
 
   getMessages(workspaceId: string, sessionId: string, limit: number = 100): any[] {
+    console.assert(typeof limit === 'number', 'limit must be number');
+    console.assert(limit > 0, 'limit must be positive');
+    
     return this.getAll("SELECT * FROM messages WHERE session_id = ? AND workspace_id = ? ORDER BY created_at DESC LIMIT ?", [sessionId, workspaceId, limit]);
   }
 
   getRecentMessages(workspaceId: string, peerId: string, limit: number = 50): any[] {
+    console.assert(typeof limit === 'number', 'limit must be number');
+    console.assert(limit > 0, 'limit must be positive');
+    
     return this.getAll("SELECT * FROM messages WHERE peer_id = ? AND workspace_id = ? ORDER BY created_at DESC LIMIT ?", [peerId, workspaceId, limit]);
   }
 
   // Conclusions
   saveConclusion(workspaceId: string, conclusion: Conclusion): void {
+    console.assert(workspaceId !== null, 'workspaceId must not be null');
+    console.assert(conclusion !== null, 'conclusion must not be null');
+    console.assert(conclusion.id !== null, 'conclusion.id must not be null');
+    console.assert(conclusion.content !== null, 'conclusion.content must not be string');
+    console.assert(typeof conclusion.content === 'string', 'conclusion.content must be string');
+    console.assert(conclusion.type !== null, 'conclusion.type must not be null');
+    
+    // Validate confidence range
+    if (conclusion.confidence !== undefined) {
+      console.assert(conclusion.confidence >= 0 && conclusion.confidence <= 1, 'confidence must be 0-1');
+    }
+    
     this.run(
       `INSERT OR REPLACE INTO conclusions (id, peer_id, workspace_id, type, content, premises, confidence, created_at, source_session_id, embedding, scope) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [conclusion.id, conclusion.peerId, workspaceId, conclusion.type, conclusion.content, JSON.stringify(conclusion.premises), conclusion.confidence, conclusion.createdAt, conclusion.sourceSessionId, conclusion.embedding ? JSON.stringify(conclusion.embedding) : null, conclusion.scope || 'project']
@@ -507,10 +560,15 @@ export class SQLiteStore {
   }
 
   getConclusions(workspaceId: string, peerId: string, limit: number = 10, scope?: Scope): Conclusion[] {
+    console.assert(workspaceId !== null, 'workspaceId must not be null');
+    console.assert(peerId !== null, 'peerId must not be null');
+    console.assert(typeof limit === 'number', 'limit must be number');
+    
     let sql = "SELECT * FROM conclusions WHERE peer_id = ? AND workspace_id = ?";
     const params: any[] = [peerId, workspaceId];
     
     if (scope) {
+      console.assert(scope === 'user' || scope === 'project', 'scope must be user or project');
       sql += " AND scope = ?";
       params.push(scope);
     }
@@ -534,13 +592,19 @@ export class SQLiteStore {
   }
 
   getAllConclusions(workspaceId: string, peerId?: string, scope?: Scope): Conclusion[] {
+    console.assert(workspaceId !== null, 'workspaceId must not be null');
+    console.assert(typeof workspaceId === 'string', 'workspaceId must be string');
+    
     if (peerId) {
+      console.assert(typeof peerId === 'string', 'peerId must be string');
       return this.getConclusions(workspaceId, peerId, 10000, scope);
     }
+    
     let sql = "SELECT * FROM conclusions WHERE workspace_id = ?";
     const params: any[] = [workspaceId];
     
     if (scope) {
+      console.assert(scope === 'user' || scope === 'project', 'scope must be user or project');
       sql += " AND scope = ?";
       params.push(scope);
     }
@@ -669,6 +733,12 @@ export class SQLiteStore {
   }
 
   searchObservationsByEmbedding(workspaceId: string, peerId: string, queryEmbedding: number[], limit: number = 20): Array<Observation & { relevance: number }> {
+    console.assert(workspaceId !== null, 'workspaceId must not be null');
+    console.assert(peerId !== null, 'peerId must not be null');
+    console.assert(Array.isArray(queryEmbedding), 'queryEmbedding must be array');
+    console.assert(queryEmbedding.length > 0, 'queryEmbedding must not be empty');
+    console.assert(typeof limit === 'number', 'limit must be number');
+    
     const observations = this.getObservations(workspaceId, peerId, 100);
     
     const scored = observations
@@ -686,6 +756,10 @@ export class SQLiteStore {
 
   // Representation
   getRepresentation(workspaceId: string, peerId: string, includeGlobal: boolean = true): PeerRepresentation | null {
+    console.assert(workspaceId !== null, 'workspaceId must not be null');
+    console.assert(peerId !== null, 'peerId must not be null');
+    console.assert(typeof includeGlobal === 'boolean', 'includeGlobal must be boolean');
+    
     const conclusions = this.getConclusions(workspaceId, peerId, 100);
     const summaries = this.getSummaries(workspaceId, peerId, 10);
     const peerCard = this.getPeerCard(workspaceId, peerId);
