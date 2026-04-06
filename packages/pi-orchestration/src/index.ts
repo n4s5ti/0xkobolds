@@ -138,7 +138,7 @@ const orchestrateTool = defineTool({
 - worker: Implementation (depth=1)
 - reviewer: Quality check (depth=0)
 - coordinator: Orchestration (depth=∞)
-- *Custom*: Register new types via `register_agent` tool
+- *Custom*: Register new types via \`register_agent\` tool
 
 **Examples:**
 { agent: "scout", task: "Analyze requirements" }
@@ -153,12 +153,11 @@ const orchestrateTool = defineTool({
     const { listModelsForPreference } = await import("./utils/model-selector.js");
     
     // Always initialize LLM executor using pi-ollama
-    const { chat, loadConfigFromEnv, createClients, DEFAULT_CONFIG } = await import("@0xkobold/pi-ollama/shared").catch(() => {
-      return { chat: null, loadConfigFromEnv: () => ({}), createClients: () => null, DEFAULT_CONFIG: { baseUrl: "", cloudUrl: "", apiKey: "" } };
-    });
+    const ollamaModule = await import("@0xkobold/pi-ollama/shared").catch(() => ({}) as any);
+    const { chat, loadConfigFromEnv, createClients, DEFAULT_CONFIG } = ollamaModule;
     
     if (chat && createClients) {
-      const envConfig = loadConfigFromEnv();
+      const envConfig = typeof loadConfigFromEnv === 'function' ? loadConfigFromEnv() : {};
       const config = { ...DEFAULT_CONFIG, ...envConfig };
       const ollamaClients = createClients(config);
       if (ollamaClients) {

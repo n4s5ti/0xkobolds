@@ -13,7 +13,7 @@ import type { AgentDefinition, AgentType } from "./types.js";
  * Note: Uses "auto" model - inherits from parent's ctx.modelRegistry
  * User can override per-agent or globally in config
  */
-const DEFAULT_AGENTS: Record<string, AgentDefinition> = {
+export const DEFAULT_AGENTS: Record<string, AgentDefinition> = {
   scout: {
     id: "scout",
     name: "Scout",

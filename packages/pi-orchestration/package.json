@@ -49,6 +49,9 @@
     "@0xkobold/pi-ollama": ">=0.2.0"
   },
   "devDependencies": {
+    "@mariozechner/pi-coding-agent": ">=0.65.0",
+    "@sinclair/typebox": ">=0.32.0",
+    "@0xkobold/pi-ollama": ">=0.2.0",
     "@types/bun": "latest",
     "@types/node": "^20.0.0",
     "typescript": "^6.0.0"

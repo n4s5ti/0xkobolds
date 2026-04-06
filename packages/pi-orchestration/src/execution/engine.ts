@@ -133,7 +133,7 @@ export async function checkPiAvailability(): Promise<boolean> {
 export async function orchestrate(
   options: OrchestrateOptions,
   ctx: ExtensionContext,
-  onUpdate?: (update: { content: Array<{type: 'text', text: string}> }) => void
+  onUpdate?: (update: any) => void
 ): Promise<OrchestrateResult | ChainResult | ParallelResult> {
   const startTime = Date.now();
   
