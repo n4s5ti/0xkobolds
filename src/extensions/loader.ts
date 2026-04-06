@@ -35,7 +35,10 @@ export async function loadExtensions(
         console.error(`[Extensions] ${path} must export a function`);
       }
     } catch (err) {
-      console.error(`[Extensions] Failed to load ${path}:`, err);
+      const isPiSuggest = path.includes('pi-suggest');
+      if (isPiSuggest || extensionLoggingEnabled) {
+        console.error(`[Extensions] Failed to load ${path}:`, err);
+      }
     }
   }
 }

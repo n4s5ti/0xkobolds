@@ -30,15 +30,16 @@ import { SuggestionWidget, type SuggestionItem } from "./ui/widget.js";
 import { ShortcutHandler } from "./ui/shortcuts.js";
 import { type ProactiveConfig, DEFAULT_PROACTIVE_CONFIG } from "./types.js";
 
-// Ghost text constants
-const GHOST_COLOR = "\x1b[38;5;244m";
+// Ghost text constants - muted placeholder style
+const GHOST_COLOR = "\x1b[38;5;250m"; // Light gray like browser placeholder
+const GHOST_STYLE = "\x1b[2m"; // Dim/faint style
 const RESET = "\x1b[0m";
 const END_CURSOR = /(?:\x1b\[[0-9;]*m \x1b\[[0-9;]*m|█|▌|▋|▉|▓)/;
 
 // LLM Configuration
 const DEFAULT_LLM_CONFIG: LlmConfig = {
   baseUrl: process.env.OLLAMA_BASE_URL || "http://localhost:11434",
-  model: process.env.OLLAMA_MODEL || "llama3.2",
+  model: process.env.OLLAMA_MODEL || "kimi-k2.5:cloud",
   timeout: 5000,
 };
 
@@ -63,6 +64,7 @@ interface RuntimeState {
   proactiveConfig: ProactiveConfig;
   widget: SuggestionWidget;
   shortcutHandler: ShortcutHandler;
+  updateWidget: ((suggestion: string | undefined) => void) | undefined;
   lastResponseTime: number;
 }
 
@@ -86,6 +88,7 @@ const runtime: RuntimeState = {
   proactiveConfig: DEFAULT_PROACTIVE_CONFIG,
   widget: new SuggestionWidget(),
   shortcutHandler: new ShortcutHandler(),
+  updateWidget: undefined,
   lastResponseTime: 0,
 };
 
@@ -163,7 +166,7 @@ export class GhostSuggestionEditor extends CustomEditor {
           : ghost.suffix.split("\n")[0];
 
         const firstSuffixWrapped = wrapTextWithAnsi(
-          truncateToWidth(`${cursor}${GHOST_COLOR}${firstLineGhost}${RESET}`, width),
+          truncateToWidth(`${cursor}${GHOST_STYLE}${GHOST_COLOR}${firstLineGhost}${RESET}`, width),
           width
         );
 
@@ -173,7 +176,7 @@ export class GhostSuggestionEditor extends CustomEditor {
         for (let index = 1; index < ghost.suffixLines.length; index++) {
           const line = truncateToWidth(ghost.suffixLines[index], width);
           continuationLines.push(
-            wrapTextWithAnsi(`${GHOST_COLOR}${line}${RESET}`, width)[0] ?? "",
+            wrapTextWithAnsi(`${GHOST_STYLE}${GHOST_COLOR}${line}${RESET}`, width)[0] ?? "",
           );
         }
 
@@ -237,145 +240,215 @@ export class GhostSuggestionEditor extends CustomEditor {
 
 // Extension entry point
 export default async function suggester(pi: ExtensionAPI) {
-  // Initialize store
-  runtime.store = new SuggestionStore();
-  await runtime.store.init();
+  try {
+    // Initialize store
+    runtime.store = new SuggestionStore();
+    await runtime.store.init();
 
-  function installGhostEditor(ctx: ExtensionContext): void {
-    if (!ctx.hasUI) return;
-    
-    ctx.ui.setEditorComponent((tui: any, theme: any, kb: any) => 
-      new GhostSuggestionEditor(
-        tui,
-        theme,
-        kb,
-        () => runtime.currentSuggestion,
-        () => runtime.suggestionRevision,
-      ),
-    );
-  }
+    function installGhostEditor(ctx: ExtensionContext): void {
+      if (!ctx.hasUI) return;
 
-  function scheduleGhostEditorReassertion(ctx: ExtensionContext): void {
-    const delaysMs = [50, 250, 1000, 3000, 8000];
-    for (const delay of delaysMs) {
-      setTimeout(() => {
-        if (runtime.currentContext !== ctx) return;
-        installGhostEditor(ctx);
-      }, delay);
-    }
-  }
-
-  // Session start handler
-  pi.on("session_start", async (_event: any, ctx: ExtensionContext) => {
-    runtime.currentContext = ctx;
-    runtime.suggestionRevision++;
-
-    if (ctx.hasUI) {
-      installGhostEditor(ctx);
-      scheduleGhostEditorReassertion(ctx);
-    }
-  });
-
-  // Agent end handler - generate suggestion
-  pi.on("agent_end", async (event: any, ctx: ExtensionContext) => {
-    runtime.currentContext = ctx;
-    
-    if (ctx.hasUI) {
-      installGhostEditor(ctx);
-    }
-
-    try {
-      const messages: Message[] = event.messages || [];
-      const suggestion = await generateSuggestion(messages);
+      ctx.ui.setEditorComponent((tui: any, theme: any, kb: any) =>
+        new GhostSuggestionEditor(
+          tui,
+          theme,
+          kb,
+          () => runtime.currentSuggestion,
+          () => runtime.suggestionRevision,
+        ),
+      );
       
-      if (suggestion) {
-        runtime.currentSuggestion = suggestion;
-        runtime.suggestionRevision++;
-      }
-    } catch (error) {
-      console.error("[pi-suggest] Error generating suggestion:", error);
-    }
-  });
-
-  // User submit handler
-  pi.on("input", async (_event: any, ctx: ExtensionContext) => {
-    runtime.currentContext = ctx;
-    runtime.suggestionRevision++;
-  });
-
-  // Register commands
-  pi.registerCommand("suggest", {
-    description: "suggester controls: status | stats | ghost",
-    handler: async (args: string, _ctx: ExtensionContext) => {
-      const trimmed = args.trim();
-      const [subcommand, ...rest] = trimmed.length > 0 ? trimmed.split(/\s+/) : ["status"];
-
-      if (subcommand === "status") {
-        const suggestion = runtime.currentSuggestion;
-        if (suggestion) {
-          console.log(`👻 Suggestion ready:\n\`\`\`\n${suggestion}\n\`\`\`\nPress Space to accept, or type to override`);
-        } else {
-          console.log("👻 No suggestion available yet. Keep chatting!");
+      // Show ghost text status in footer
+      ctx.ui.setStatus("ghost", "👻");
+      
+      // Set up widget for suggestion preview
+      ctx.ui.setWidget("ghost-preview", undefined); // Clear on start
+      
+      // Update widget when suggestion changes
+      const updateWidget = (suggestion: string | undefined) => {
+        if (suggestion && ctx.hasUI) {
+          const preview = truncateToWidth(suggestion, 80);
+          ctx.ui.setWidget("ghost-preview", [
+            "",
+            `  \x1b[2m│ suggestion: ${preview}...\x1b[0m`,
+            "",
+          ], { placement: "aboveEditor" });
+        } else if (ctx.hasUI) {
+          ctx.ui.setWidget("ghost-preview", undefined);
         }
-        return;
+      };
+      
+      // Store update function for later use
+      runtime.updateWidget = updateWidget;
+    }
+
+    function scheduleGhostEditorReassertion(ctx: ExtensionContext): void {
+      const delaysMs = [50, 250, 1000, 3000, 8000];
+      for (const delay of delaysMs) {
+        setTimeout(() => {
+          if (runtime.currentContext !== ctx) return;
+          installGhostEditor(ctx);
+        }, delay);
+      }
+    }
+
+    // Session start handler
+    pi.on("session_start", async (_event: any, ctx: ExtensionContext) => {
+      runtime.currentContext = ctx;
+      runtime.suggestionRevision++;
+
+      // Track current model
+      if (ctx.model) {
+        const model = ctx.model;
+        const provider = model.provider;
+        
+        // Update LLM config to use the active model
+        runtime.llmConfig = {
+          baseUrl: provider === "ollama" ? runtime.llmConfig.baseUrl : "", // Keep Ollama base
+          model: model.id || runtime.llmConfig.model,
+          timeout: runtime.llmConfig.timeout,
+        };
+        
+        // Reinitialize LLM suggester with new config
+        try {
+          runtime.llmSuggester = new LlmSuggester(runtime.llmConfig);
+        } catch (e) {
+          // Silent fail - template suggestions still work
+        }
       }
 
-      if (subcommand === "stats") {
-        const stats = await runtime.store?.getStats();
-        if (stats) {
-          console.log(`📊 Suggestion Stats:
+      if (ctx.hasUI) {
+        installGhostEditor(ctx);
+        scheduleGhostEditorReassertion(ctx);
+        ctx.ui.notify("👻 Ghost suggestions ready (Space to accept)", "info");
+      }
+    });
+
+    // Model selection handler - update when user changes model
+    pi.on("model_select", async (event: any, ctx: ExtensionContext) => {
+      const model = event.model;
+      if (!model) return;
+      
+      // Update LLM config to match the selected model
+      runtime.llmConfig = {
+        baseUrl: model.provider === "ollama" ? runtime.llmConfig.baseUrl : "",
+        model: model.id || runtime.llmConfig.model,
+        timeout: runtime.llmConfig.timeout,
+      };
+      
+      // Reinitialize suggester
+      try {
+        runtime.llmSuggester = new LlmSuggester(runtime.llmConfig);
+        if (ctx.hasUI) {
+          ctx.ui.notify(`👻 Using ${model.id} for suggestions`, "info");
+        }
+      } catch (e) {
+        // Silent fail
+      }
+    });
+
+    // Agent end handler - generate suggestion
+    pi.on("agent_end", async (event: any, ctx: ExtensionContext) => {
+      runtime.currentContext = ctx;
+
+      if (ctx.hasUI) {
+        installGhostEditor(ctx);
+      }
+
+      try {
+        const messages: Message[] = event.messages || [];
+        const suggestion = await generateSuggestion(messages);
+
+        if (suggestion) {
+          runtime.currentSuggestion = suggestion;
+          runtime.suggestionRevision++;
+          
+          // Update the widget preview
+          if (runtime.updateWidget) {
+            runtime.updateWidget(suggestion);
+          }
+        }
+      } catch (error) {
+        console.error("[pi-suggest] Error generating suggestion:", error);
+      }
+    });
+
+    // Register commands
+    pi.registerCommand("suggest", {
+      description: "suggester controls: status | stats | ghost",
+      handler: async (args: string, _ctx: ExtensionContext) => {
+        const trimmed = args.trim();
+        const [subcommand, ...rest] = trimmed.length > 0 ? trimmed.split(/\s+/) : ["status"];
+
+        if (subcommand === "status") {
+          const suggestion = runtime.currentSuggestion;
+          if (suggestion) {
+            console.log(`👻 Suggestion ready:\n\`\`\`\n${suggestion}\n\`\`\`\nPress Space to accept, or type to override`);
+          } else {
+            console.log("👻 No suggestion available yet. Keep chatting!");
+          }
+          return;
+        }
+
+        if (subcommand === "stats") {
+          const stats = await runtime.store?.getStats();
+          if (stats) {
+            console.log(`📊 Suggestion Stats:
   Total: ${stats.total_suggestions}
   Accepted: ${stats.accepted_count}
   Dismissed: ${stats.dismissed_count}
   Acceptance Rate: ${(stats.acceptance_rate * 100).toFixed(1)}%`);
+          }
+          return;
         }
-        return;
-      }
 
-      if (subcommand === "ghost") {
-        const suggestion = runtime.currentSuggestion;
-        if (suggestion) {
-          console.log(`👻 Current ghost:\n\`\`\`\n${suggestion}\n\`\`\``);
-        } else {
-          console.log("👻 No ghost text available");
+        if (subcommand === "ghost") {
+          const suggestion = runtime.currentSuggestion;
+          if (suggestion) {
+            console.log(`👻 Current ghost:\n\`\`\`\n${suggestion}\n\`\`\``);
+          } else {
+            console.log("👻 No ghost text available");
+          }
+          return;
         }
-        return;
-      }
 
-      if (subcommand === "configure") {
-        console.log(`⚙️  LLM Configuration:
+        if (subcommand === "configure") {
+          console.log(`⚙️  LLM Configuration:
   Base URL: ${runtime.llmConfig.baseUrl}
   Model: ${runtime.llmConfig.model}
   Timeout: ${runtime.llmConfig.timeout}ms`);
-        return;
-      }
+          return;
+        }
 
-      if (subcommand === "learn") {
-        const stats = runtime.learner.getStats();
-        const patterns = runtime.rejectionDetector.detectPatterns();
-        
-        console.log(`📚 Learning Stats:
+        if (subcommand === "learn") {
+          const stats = runtime.learner.getStats();
+          const patterns = runtime.rejectionDetector.detectPatterns();
+
+          console.log(`📚 Learning Stats:
   Total suggestions: ${stats.total}
   Acceptance rate: ${(stats.acceptanceRate * 100).toFixed(1)}%
   
   Rejection patterns: ${patterns.length}`);
-        
-        if (patterns.length > 0) {
-          console.log("\nTop patterns:");
-          for (const p of patterns.slice(0, 3)) {
-            console.log(`  - ${p.category}: ${p.count} rejections (${(p.confidence * 100).toFixed(0)}% confident)`);
+
+          if (patterns.length > 0) {
+            console.log("\nTop patterns:");
+            for (const p of patterns.slice(0, 3)) {
+              console.log(`  - ${p.category}: ${p.count} rejections (${(p.confidence * 100).toFixed(0)}% confident)`);
+            }
           }
+          return;
         }
-        return;
-      }
 
-      console.log("👻 Usage: /suggest status | /suggest stats | /suggest ghost | /suggest configure | /suggest learn");
-    },
-  });
-
-  console.log("[pi-suggest] Ghost text prompt suggester loaded (Phase 3)");
-  console.log("[pi-suggest] Learning: enabled");
-  console.log("[pi-suggest] Press Space to accept suggestion, type to override");
+        console.log("👻 Usage: /suggest status | /suggest stats | /suggest ghost | /suggest configure | /suggest learn");
+      },
+    });
+    
+    // Startup message (minimal)
+    console.log("[pi-suggest] Ghost suggestions ready (Space to accept)");
+  } catch (error) {
+    console.error("[pi-suggest] FATAL ERROR during initialization:", error);
+    throw error;  // Re-throw so the loader catches it
+  }
 }
 
 /**
@@ -398,11 +471,11 @@ async function generateSuggestions(messages: Message[]): Promise<SuggestionItem[
 
   // Analyze session using SessionAnalyzer
   const summary = runtime.sessionAnalyzer.summarize(messages as any);
-  
+
   // Classify intent using IntentClassifier
   const lastPrompt = recentPrompts[recentPrompts.length - 1];
   const intentResult = runtime.intentClassifier.classifyWithConfidence(lastPrompt);
-  
+
   // Update summary with detected intent
   summary.intent = intentResult.intent;
 
@@ -413,9 +486,9 @@ async function generateSuggestions(messages: Message[]): Promise<SuggestionItem[
     if (!runtime.llmSuggester) {
       runtime.llmSuggester = new LlmSuggester(runtime.llmConfig);
     }
-    
+
     const llmSuggestions = await runtime.llmSuggester.generateSuggestions(summary);
-    
+
     for (const s of llmSuggestions.slice(0, 2)) {
       items.push({ text: s.text, type: s.type, confidence: s.confidence });
     }
@@ -426,7 +499,7 @@ async function generateSuggestions(messages: Message[]): Promise<SuggestionItem[
   // Add template-based suggestions
   const maxSuggestions = runtime.proactiveConfig.maxSuggestions;
   const templateSuggestions = runtime.suggestionGenerator.generate(summary, intentResult.intent, maxSuggestions);
-  
+
   for (const s of templateSuggestions) {
     // Check if we should avoid this suggestion
     if (runtime.rejectionDetector.shouldAvoid(s.text)) {
@@ -436,7 +509,7 @@ async function generateSuggestions(messages: Message[]): Promise<SuggestionItem[
         continue;
       }
     }
-    
+
     // Apply learning boost
     const boost = runtime.learner.getSuggestionBoost(s.text);
     items.push({ text: s.text, type: s.type, confidence: s.confidence * boost });

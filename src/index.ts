@@ -179,6 +179,22 @@ function ext(name: string): string {
   return resolve(extensionDir, name + extensionExt);
 }
 
+// Find pi-suggest extension (from npm package or local)
+function findPiSuggestExtension(): string {
+  // Check if we have a local development version
+  const localDev = resolve(packageRoot, 'packages/pi-suggest/dist/index.js');
+  if (existsSync(localDev)) {
+    console.log(`[pi-suggest] Using local development version`);
+    return localDev;
+  }
+  // Check node_modules
+  const nodeModules = resolve(packageRoot, 'node_modules/@0xkobold/pi-suggest/dist/index.js');
+  if (existsSync(nodeModules)) {
+    return nodeModules;
+  }
+  return resolve(packageRoot, 'node_modules/@0xkobold/pi-suggest/dist/index.js');
+}
+
 // Verify extensions exist (for debugging)
 function verifyExtensions(): string[] {
   const ollamaExtensionPath = findOllamaExtension();
@@ -197,8 +213,8 @@ function verifyExtensions(): string[] {
 
     // Ollama Provider Extension (npm package)
     '--extension', ollamaExtensionPath,
-    // 🧠 Adaptive Model Router (must load after pi-ollama)
-    '--extension', ext('routed-ollama-extension'),
+    // 🧠 Adaptive Model Router (DISABLED - using pi-ollama directly)
+    // '--extension', ext('routed-ollama-extension'),
 
     // Core Features
     // Agent Orchestration (Unified - v0.2.0)
@@ -259,6 +275,8 @@ function verifyExtensions(): string[] {
     '--extension', findCloudflareBrowserExtension(),
     // 🔌 Pi Bridge (migrate ~/.pi to ~/.0xkobold, load pi extensions)
     '--extension', findPiBridgeExtension(),
+    // 👻 pi-suggest (ghost text prompt suggestions)
+    '--extension', findPiSuggestExtension(),
     '--extension', ext('diagnostics-extension'),
     '--extension', ext('workspace-footer-extension'),
     // Deprecated: Use agent-orchestrator-extension instead
@@ -284,7 +302,7 @@ function verifyExtensions(): string[] {
     }
     console.log(`   Loaded ${validCount} extensions from ${isRunningFromDist ? 'dist' : 'src'}`);
   }
-
+  
   return extensions;
 }
 

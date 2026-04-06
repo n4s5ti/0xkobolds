@@ -75,7 +75,7 @@ export const config: Config = {
     // Infrastructure
     './src/config/unified-config.ts',
     './src/extensions/core/config-extension.ts',
-    './src/extensions/core/routed-ollama-extension.ts',
+    // './src/extensions/core/routed-ollama-extension.ts',  // Disabled - using pi-ollama instead
     './src/sessions/UnifiedSessionBridge.ts',
     
     // Core Features
@@ -91,7 +91,7 @@ export const config: Config = {
     './src/extensions/core/twitch-extension.ts',
     
     // DRACONIC SYSTEMS
-    './src/extensions/core/agent-orchestrator-extension.ts',
+    // './src/extensions/core/agent-orchestrator-extension.ts',  // Disabled - using pi-orchestration instead
     './src/extensions/core/gateway-extension.ts',
     './src/extensions/core/fileops-extension.ts',
     './src/extensions/core/git-commit-extension.ts',
@@ -112,7 +112,7 @@ export const config: Config = {
     './src/extensions/core/self-update-extension.ts',
     
     // Community Extensions
-    './src/extensions/community/draconic-subagents-wrapper.ts',
+    // './src/extensions/community/draconic-subagents-wrapper.ts',  // Disabled - using pi-orchestration
     './src/extensions/community/draconic-messenger-wrapper.ts',
     
     // Context Engine
@@ -121,6 +121,7 @@ export const config: Config = {
     // Published @0xkobold packages (explicit paths)
     ext('@0xkobold/pi-learn'),
     ext('@0xkobold/pi-ollama'),
+    ext('@0xkobold/pi-orchestration'),
     ext('@0xkobold/pi-bridge'),
     ext('@0xkobold/pi-obsidian-bridge'),
     ext('@0xkobold/pi-cloudflare-browser'),

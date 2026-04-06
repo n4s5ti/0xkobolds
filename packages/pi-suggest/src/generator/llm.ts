@@ -7,6 +7,7 @@ export interface LlmConfig {
   baseUrl: string;
   model: string;
   timeout: number;
+  provider?: string; // Track which provider is being used
 }
 
 export interface LlmSuggestion {
