@@ -1,6 +1,6 @@
 {
   "name": "@0xkobold/pi-learn",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Open-source memory infrastructure for pi agents - inspired by Honcho. Provides peer representations, reasoning, and context assembly for stateful AI agents.",
   "keywords": [
     "pi-package",
@@ -31,7 +31,8 @@
   "files": [
     "dist/",
     "README.md",
-    "SKILL.md"
+    "SKILL.md",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "build": "tsc && node build-extension.js",
