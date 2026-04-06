@@ -1,14 +1,16 @@
 /**
  * pi-kobold Extension
  * 
- * The omega extension that bundles everything:
+ * The omega extension that bundles everything for 0xKobold:
  * - pi-orchestration for multi-agent workflows
+ * - pi-gateway for multi-platform messaging
  * - Development tools for creating skills and extensions
  * - LLM adapter for bridging with 0xKobold's multi-provider system
  */
 
 import { defineTool } from "@mariozechner/pi-coding-agent";
 import type { 
+  ExtensionAPI, 
   ExtensionContext, 
   ToolDefinition,
 } from "@mariozechner/pi-coding-agent";
@@ -20,10 +22,20 @@ import {
   type LLMExecutor,
 } from "@0xkobold/pi-orchestration";
 
-// Import meta-skill tools
-import { createSkillTool } from "./tools/create-skill.js";
-import { createExtensionTool } from "./tools/create-extension.js";
-import { koboldStatusTool } from "./tools/kobold-status.js";
+// Re-export pi-gateway types and functions
+export {
+  type GatewayConfig,
+  type GatewayState,
+  type SessionConfig,
+  type Platform,
+  startGatewayServer,
+  stopGatewayServer,
+  getGatewayStatus,
+  loadGatewayConfig,
+  saveGatewayConfig,
+  listGatewaySessions,
+  listGatewayAdapters,
+} from "@0xkobold/pi-gateway";
 
 // Re-export orchestration types
 export type { LLMExecutor, OrchestrateOptions, OrchestrateResult, ChainResult, ParallelResult } from "@0xkobold/pi-orchestration";
@@ -39,6 +51,35 @@ export {
   type ChatResponse,
 } from "./utils/llm-adapter.js";
 
+// Import meta-skill tools
+import { createSkillTool } from "./tools/create-skill.js";
+import { createExtensionTool } from "./tools/create-extension.js";
+import { koboldStatusTool } from "./tools/kobold-status.js";
+
+// Import gateway tools
+import { gatewayStatusTool, gatewayStartTool, gatewayStopTool } from "./tools/gateway-tools.js";
+
+// ============================================================================
+// Gateway Bridge (pi-gateway ↔ desktop app)
+// ============================================================================
+
+// Gateway state shared with desktop app's WebSocket server
+interface GatewayBridge {
+  isRunning: boolean;
+  port: number;
+  clients: Set<string>;
+  adapters: string[];
+  sessions: number;
+}
+
+let gatewayBridge: GatewayBridge = {
+  isRunning: false,
+  port: 18789,
+  clients: new Set(),
+  adapters: [],
+  sessions: 0,
+};
+
 // ============================================================================
 // LLM Executor Storage
 // ============================================================================
@@ -48,24 +89,6 @@ let initialized = false;
 
 /**
  * Initialize pi-kobold with an LLM executor
- * 
- * Call this during extension loading to configure the LLM for orchestration.
- * 
- * @example
- * ```typescript
- * // In 0xKobold's main entry
- * import { initializeKobold } from "@0xkobold/pi-kobold";
- * import { chat } from "./src/llm/multi-provider.js";
- * 
- * initializeKobold(async (opts) => {
- *   const result = await chat({
- *     model: opts.model,
- *     messages: opts.messages,
- *     temperature: opts.temperature,
- *   });
- *   return { content: result.content, usage: result.usage };
- * });
- * ```
  */
 export function initializeKobold(executor: LLMExecutor): void {
   if (initialized) {
@@ -82,8 +105,6 @@ export function initializeKobold(executor: LLMExecutor): void {
 
 /**
  * Initialize with 0xKobold's multi-provider router directly
- * 
- * This is the preferred method when running inside 0xKobold.
  */
 export async function initializeWithRouter(router: any): Promise<void> {
   if (initialized) {
@@ -91,7 +112,6 @@ export async function initializeWithRouter(router: any): Promise<void> {
     return;
   }
 
-  // Create executor from router
   const executor: LLMExecutor = async (opts) => {
     const result = await router.chat({
       model: opts.model || "ollama/llama3.2:3b",
@@ -118,7 +138,7 @@ export async function initializeWithRouter(router: any): Promise<void> {
 }
 
 /**
- * Get the current LLM executor (if initialized)
+ * Get the current LLM executor
  */
 export function getLLMExecutor(): LLMExecutor | null {
   return initializedLLMExecutor;
@@ -132,12 +152,28 @@ export function isKoboldInitialized(): boolean {
 }
 
 // ============================================================================
-// Helper Tool: kobold_initialize
+// Gateway Bridge API (for desktop app integration)
 // ============================================================================
 
 /**
- * Initialize the LLM executor (admin tool)
+ * Get the gateway bridge state for the desktop app
  */
+export function getGatewayBridge(): GatewayBridge {
+  return gatewayBridge;
+}
+
+/**
+ * Update gateway bridge state (called by gateway extension)
+ */
+export function updateGatewayBridge(update: Partial<GatewayBridge>): void {
+  gatewayBridge = { ...gatewayBridge, ...update };
+  console.log(`[pi-kobold] Gateway bridge updated: ${JSON.stringify(gatewayBridge)}`);
+}
+
+// ============================================================================
+// Helper Tools
+// ============================================================================
+
 const initializeTool = defineTool({
   name: "kobold_initialize",
   label: "Initialize Kobold",
@@ -158,13 +194,8 @@ const initializeTool = defineTool({
       };
     }
 
-    // For manual initialization, create a simple executor
-    // In practice, this should be called from 0xKobold's main entry
     const executor: LLMExecutor = async (opts) => {
-      // This is a placeholder - in real usage, initializeKobold() should be called
-      // from 0xKobold's main entry point with the actual LLM router
       console.log("[pi-kobold] Warning: Using placeholder LLM executor");
-      
       return {
         content: "Error: LLM executor not properly initialized. Call initializeKobold() from main entry.",
         usage: { inputTokens: 0, outputTokens: 0 },
@@ -191,16 +222,19 @@ export const tools: ToolDefinition[] = [
   // Initialization tool
   initializeTool,
   
+  // Gateway tools (from pi-gateway)
+  gatewayStatusTool,
+  gatewayStartTool,
+  gatewayStopTool,
+  
   // Meta-skill tools (for development)
   createSkillTool,
   createExtensionTool,
   koboldStatusTool,
 ];
 
-// Note: Orchestration tools are exported separately from @0xkobold/pi-orchestration
-// They can be merged by the parent application
-
 export default tools;
 
 // Log extension load
-console.log("[pi-kobold] Extension loaded - call initializeKobold() to enable orchestration");
+console.log("[pi-kobold] Extension loaded - bundles pi-orchestration, pi-gateway, and dev tools");
+console.log("[pi-kobold] Call initializeKobold() to enable orchestration");

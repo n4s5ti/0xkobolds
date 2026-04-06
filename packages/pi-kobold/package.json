@@ -1,13 +1,14 @@
 {
   "name": "@0xkobold/pi-kobold",
-  "version": "0.1.0",
-  "description": "Meta-extension for 0xKobold that bundles pi-orchestration and provides development tools",
+  "version": "0.2.0",
+  "description": "Meta-extension for 0xKobold that bundles pi-orchestration, pi-gateway, and development tools",
   "keywords": [
     "pi-package",
     "pi-extension",
     "0xkobold",
     "orchestration",
-    "development-tools"
+    "gateway",
+    "messaging"
   ],
   "author": "0xKobold",
   "license": "MIT",
@@ -18,6 +19,10 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./gateway": {
+      "import": "./dist/tools/gateway-tools.js",
+      "types": "./dist/tools/gateway-tools.d.ts"
     }
   },
   "files": [
@@ -42,7 +47,8 @@
     "@sinclair/typebox": ">=0.32.0"
   },
   "dependencies": {
-    "@0xkobold/pi-orchestration": "../pi-orchestration"
+    "@0xkobold/pi-orchestration": "../pi-orchestration",
+    "@0xkobold/pi-gateway": "../pi-gateway"
   },
   "devDependencies": {
     "@types/bun": "latest",
