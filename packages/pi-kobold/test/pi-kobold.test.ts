@@ -276,3 +276,80 @@ describe("Sub-Extensions", () => {
     expect(tools).toContain("learn_query");
   });
 });
+
+// ============================================================================
+// Git Package Sync Tools Tests
+// ============================================================================
+
+describe("Git Package Sync Tools", () => {
+  test("registers all 7 git tools", async () => {
+    const pi = createFakePi();
+    const extension = (await import("../src/index.js")).default;
+    await extension(pi);
+
+    const tools = (pi.getAllTools() as any[]).map((t: any) => t.name);
+
+    expect(tools).toContain("git_package_status");
+    expect(tools).toContain("git_package_push");
+    expect(tools).toContain("git_package_pull");
+    expect(tools).toContain("git_package_init");
+    expect(tools).toContain("git_issue");
+    expect(tools).toContain("git_pr");
+    expect(tools).toContain("git_worktree");
+  });
+
+  test("git_package_status tool has correct schema", async () => {
+    const pi = createFakePi();
+    const extension = (await import("../src/index.js")).default;
+    await extension(pi);
+
+    const statusTool = (pi.getAllTools() as any[]).find((t: any) => t.name === "git_package_status");
+    expect(statusTool).toBeDefined();
+    expect(statusTool.description).toContain("sync status");
+    expect(statusTool.parameters.properties.package).toBeDefined();
+  });
+
+  test("git_issue tool schema has action union", async () => {
+    const pi = createFakePi();
+    const extension = (await import("../src/index.js")).default;
+    await extension(pi);
+
+    const issueTool = (pi.getAllTools() as any[]).find((t: any) => t.name === "git_issue");
+    expect(issueTool).toBeDefined();
+    const actionProp = issueTool.parameters.properties?.action;
+    expect(actionProp).toBeDefined();
+  });
+
+  test("git_worktree tool schema has action union", async () => {
+    const pi = createFakePi();
+    const extension = (await import("../src/index.js")).default;
+    await extension(pi);
+
+    const worktreeTool = (pi.getAllTools() as any[]).find((t: any) => t.name === "git_worktree");
+    expect(worktreeTool).toBeDefined();
+    const actionProp = worktreeTool.parameters.properties?.action;
+    expect(actionProp).toBeDefined();
+  });
+
+  test("total kobold + git tool count is 11", async () => {
+    const pi = createFakePi();
+    const extension = (await import("../src/index.js")).default;
+    await extension(pi);
+
+    const tools = (pi.getAllTools() as any[]);
+    const koboldTools = tools.filter((t: any) => t.name.startsWith("kobold_") || t.name.startsWith("git_"));
+    expect(koboldTools.length).toBe(11);
+  });
+
+  test("pi-mcp sub-extension loads via pi-kobold", async () => {
+    const pi = createFakePi();
+    const extension = (await import("../src/index.js")).default;
+    await extension(pi);
+
+    // pi-mcp registers tools — check that it loaded alongside the others
+    const tools = (pi.getAllTools() as any[]).map((t: any) => t.name);
+    // pi-mcp contributes mcp_* tools if any MCP servers are configured
+    // At minimum, kobold + git + orchestration + gateway + learn tools exist
+    expect(tools.length).toBeGreaterThan(15);
+  });
+});

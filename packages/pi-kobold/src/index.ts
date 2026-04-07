@@ -38,6 +38,7 @@ import orchestrationExtension from "@0xkobold/pi-orchestration";
 import gatewayExtension from "@0xkobold/pi-gateway";
 import ollamaExtension from "@0xkobold/pi-ollama";
 import learnExtension from "@0xkobold/pi-learn";
+import mcpExtension from "@0xkobold/pi-mcp";
 
 // Re-export orchestration types and functions for library consumers
 export type { OrchestrateOptions, OrchestrateResult, ChainResult, ParallelResult } from "@0xkobold/pi-orchestration";
@@ -52,6 +53,9 @@ export {
   type ChatOptions,
   type ChatResponse,
 } from "./utils/llm-adapter.js";
+
+// Git package sync tools
+import { registerGitPackageSyncTools } from "./tools/git-package-sync.js";
 
 // ============================================================================
 // LLM Executor Storage
@@ -360,6 +364,7 @@ export default async (pi: ExtensionAPI): Promise<void> => {
     { name: "pi-gateway",      factory: gatewayExtension },
     { name: "pi-ollama",      factory: ollamaExtension },
     { name: "pi-learn",       factory: learnExtension },
+    { name: "pi-mcp",         factory: mcpExtension },
   ];
 
   for (const { name, factory } of subExtensions) {
@@ -649,5 +654,8 @@ export default async (pi: ExtensionAPI): Promise<void> => {
     },
   });
 
-  console.log("[pi-kobold] Extension loaded — 4 kobold tools + sub-extensions registered");
+  // Register git package sync tools
+  registerGitPackageSyncTools(pi);
+
+  console.log("[pi-kobold] Extension loaded — 11 kobold tools + sub-extensions registered");
 };
