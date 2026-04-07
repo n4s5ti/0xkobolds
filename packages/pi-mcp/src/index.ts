@@ -1,32 +1,68 @@
 /**
  * pi-mcp - Model Context Protocol Extension for pi-coding-agent
  *
- * Connects to MCP servers (stdio, SSE, StreamableHTTP) and exposes
+ * Connects to MCP servers (stdio, SSE, StreamableHTTP, WebSocket) and exposes
  * their tools, resources, and prompts as native pi tools.
+ *
+ * ## As a pi extension
+ *
+ *   import mcpExtension from "@0xkobold/pi-mcp";
+ *   // pi loads this automatically via pi.extensions in package.json
+ *
+ * ## As a library
+ *
+ *   import { MCPConnectionManager, loadConfig } from "@0xkobold/pi-mcp/client";
+ *   const manager = new MCPConnectionManager();
+ *   const info = await manager.connect(serverConfig);
  *
  * Architecture:
  * - client/     MCPConnectionManager - SDK-based client connections
  * - config/     Load/save MCP server configs from ~/.0xkobold/mcp.json
  * - tools/      Tool bridge - registers MCP tools as pi tools
  *
- * Commands:
- *   /mcp              Show MCP status & help
- *   /mcp list         List all configured servers
- *   /mcp connect      Connect to a server
- *   /mcp disconnect   Disconnect from a server
- *   /mcp enable       Enable auto-connect for a server
- *   /mcp disable      Disable auto-connect for a server
- *   /mcp add          Add a new server
- *   /mcp remove       Remove a server
- *   /mcp refresh      Re-discover tools for a server
- *   /mcp import       Import servers from Claude Desktop config
- *
- * Tools:
- *   mcp_discover      List all available MCP tools/resources/prompts
- *   mcp_<server>_*    Individual tools from connected servers
- *
  * NASA 10 Rules: No recursion, no dynamic memory, fixed bounds, assertions
  */
+
+// ---------------------------------------------------------------------------
+// Library re-exports
+// ---------------------------------------------------------------------------
+
+export { MCPConnectionManager, ResourceCache, interpolateEnv } from "./client/index.js";
+export type {
+  TransportType,
+  ServerTransportConfig,
+  StdioServerConfig,
+  SseServerConfig,
+  StreamableHttpServerConfig,
+  WebSocketServerConfig,
+  MCPServerConfig,
+  ConnectionStatus,
+  DiscoveredTool,
+  DiscoveredResource,
+  DiscoveredPrompt,
+  ConnectionInfo,
+} from "./client/index.js";
+
+export {
+  loadConfig,
+  saveConfig,
+  createDefaultConfig,
+  importClaudeDesktopServers,
+  getEnabledServers,
+  upsertServer,
+  removeServer,
+  toggleServer,
+  mergeProjectConfig,
+  normalizeConfig,
+} from "./config/index.js";
+export type { MCPConfig } from "./config/index.js";
+
+export {
+  registerServerTools,
+  unregisterServerTools,
+  unregisterAllTools,
+  isToolAllowed,
+} from "./tools/index.js";
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";

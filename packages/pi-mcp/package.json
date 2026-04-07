@@ -1,7 +1,7 @@
 {
   "name": "@0xkobold/pi-mcp",
-  "version": "0.2.0",
-  "description": "Model Context Protocol (MCP) integration for pi-coding-agent. Connect to any MCP server (stdio, SSE, StreamableHTTP) and use its tools, resources, and prompts natively.",
+  "version": "0.4.0",
+  "description": "Model Context Protocol (MCP) integration for pi-coding-agent. Connect to any MCP server (stdio, SSE, StreamableHTTP, WebSocket) and use its tools, resources, and prompts natively.",
   "keywords": [
     "pi-package",
     "pi-extension",
@@ -15,27 +15,31 @@
   "author": "0xKobold",
   "license": "MIT",
   "type": "module",
-  "main": "src/index.ts",
+  "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
-      "import": "./src/index.ts",
+      "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
     },
     "./client": {
-      "import": "./src/client/index.ts",
+      "import": "./dist/client/index.js",
       "types": "./dist/client/index.d.ts"
     },
     "./config": {
-      "import": "./src/config/index.ts",
+      "import": "./dist/config/index.js",
       "types": "./dist/config/index.d.ts"
+    },
+    "./tools": {
+      "import": "./dist/tools/index.js",
+      "types": "./dist/tools/index.d.ts"
     }
   },
   "files": [
     "dist/",
-    "src/",
     "README.md",
-    "SKILL.md"
+    "CHANGELOG.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "tsc",
@@ -45,7 +49,7 @@
   },
   "pi": {
     "extensions": [
-      "./src/index.ts"
+      "./dist/index.js"
     ],
     "skills": [
       "./skills/mcp/SKILL.md"
@@ -67,6 +71,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/moikapy/0xkobolds"
-  }
+    "url": "https://github.com/0xKobold/pi-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/0xKobold/pi-mcp/issues"
+  },
+  "homepage": "https://github.com/0xKobold/pi-mcp#readme"
 }

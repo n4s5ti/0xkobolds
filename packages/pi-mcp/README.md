@@ -190,6 +190,53 @@ HTTP headers also support interpolation:
 }
 ```
 
+## As a Library
+
+You can use `@0xkobold/pi-mcp` as a standalone library, without pi-coding-agent:
+
+```typescript
+// Main entry — extension + all re-exports
+import mcpExtension, {
+  MCPConnectionManager,
+  ResourceCache,
+  interpolateEnv,
+  loadConfig,
+  saveConfig,
+  createDefaultConfig,
+  isToolAllowed,
+} from "@0xkobold/pi-mcp";
+
+// Client subpath — connection management only
+import { MCPConnectionManager, type MCPServerConfig } from "@0xkobold/pi-mcp/client";
+
+// Config subpath — config loading/saving only
+import { loadConfig, upsertServer, type MCPConfig } from "@0xkobold/pi-mcp/config";
+
+// Tools subpath — tool registration utilities only
+import { isToolAllowed, DEFAULT_MAX_TOOLS } from "@0xkobold/pi-mcp/tools";
+```
+
+Quick start without pi-coding-agent:
+
+```typescript
+import { MCPConnectionManager } from "@0xkobold/pi-mcp/client";
+
+const manager = new MCPConnectionManager([process.cwd()]);
+
+const serverConfig = {
+  name: "filesystem",
+  transport: { type: "stdio", command: "npx", args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"] },
+  enabled: true,
+  autoReconnect: true,
+};
+
+const info = await manager.connect(serverConfig);
+console.log(`Connected: ${info.tools.length} tools`);
+
+const result = await manager.callTool("filesystem", "read_file", { path: "/tmp/hello.txt" });
+console.log(result);
+```
+
 ## Architecture
 
 ```
