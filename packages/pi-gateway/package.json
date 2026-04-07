@@ -1,6 +1,6 @@
 {
   "name": "@0xkobold/pi-gateway",
-  "version": "0.4.0",
+  "version": "0.5.2",
   "description": "Hermes-style messaging gateway for pi - multi-platform agent with sessions, security, and background tasks",
   "author": "0xKobold",
   "license": "MIT",
@@ -28,9 +28,11 @@
     "prepublishOnly": "rm -rf dist && tsc"
   },
   "dependencies": {
+    "sql.js": "^1.14.1",
     "ws": "^8.18.0"
   },
   "devDependencies": {
+    "@types/sql.js": "^1.4.11",
     "@types/node": "^20.19.37",
     "@types/ws": "^8.18.1",
     "bun-types": "^1.3.11",

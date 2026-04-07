@@ -259,10 +259,9 @@ async function sendRpc(command: string, data: Record<string, unknown> = {}): Pro
 }
 
 // Platform adapter callbacks
-const adapterCallbacks: AdapterCallbacks = {
+  const adapterCallbacks: AdapterCallbacks = {
   onMessage: async (message: PlatformMessage) => {
-    // Get or create session for this chat
-    const session = getOrCreateSession(
+    const session = await getOrCreateSession(
       message.platform,
       message.channelId,
       message.userId,
@@ -273,8 +272,7 @@ const adapterCallbacks: AdapterCallbacks = {
       }
     );
 
-    // Check allowlist
-    if (!isUserAllowed(message.platform as Platform, message.userId)) {
+    if (!(await isUserAllowed(message.platform as Platform, message.userId))) {
       console.log(`[gateway] User ${message.userId} not in allowlist`);
       // Could send a DM here about pairing flow
       return;
@@ -395,26 +393,23 @@ async function initializeAdapters(): Promise<void> {
 // Cron job for background tasks and session cleanup
 function startCron(): void {
   cronInterval = setInterval(async () => {
-    // Check for pending background results
     for (const session of state.sessions.values()) {
-      const pending = getPendingResultsForSession(session.id);
+      const pending = await getPendingResultsForSession(session.id);
       for (const task of pending) {
-        // Deliver result to user via their platform
         const adapter = state.adapters.get(session.platform);
         if (adapter) {
-          const resultText = task.status === "completed" 
+          const resultText = task.status === "completed"
             ? `✅ Background task completed:\n\`\`\`\n${JSON.stringify(task.result, null, 2)}\n\`\`\``
             : `❌ Background task failed:\n\`\`\`\n${task.error}\n\`\`\``;
-          
+
           await adapter.sendMessage(session.channelId, resultText);
-          markTaskDelivered(task.id);
+          await markTaskDelivered(task.id);
         }
       }
     }
 
-    // Touch active sessions
     for (const session of state.sessions.values()) {
-      touchSession(session.id);
+      await touchSession(session.id);
     }
   }, 60000); // Every 60 seconds (Hermes-style)
 }
@@ -461,25 +456,25 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Pro
 
   if (url.pathname === "/api/sessions" && req.method === "GET") {
     res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify(listSessions()));
+    res.end(JSON.stringify(await listSessions()));
     return;
   }
 
   if (url.pathname === "/api/background" && req.method === "GET") {
     res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify(listTasks()));
+    res.end(JSON.stringify(await listTasks()));
     return;
   }
 
   if (url.pathname === "/api/allowlist" && req.method === "GET") {
     res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify(listAllowlistedUsers()));
+    res.end(JSON.stringify(await listAllowlistedUsers()));
     return;
   }
 
   if (url.pathname === "/api/pairing" && req.method === "GET") {
     res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify(listPendingPairingCodes()));
+    res.end(JSON.stringify(await listPendingPairingCodes()));
     return;
   }
 
@@ -512,7 +507,7 @@ function handleWebSocket(ws: WebSocket, req: IncomingMessage): void {
           break;
         }
         case "background": {
-          const task = startBackgroundTask(msg.data?.sessionId || "default", msg.data?.command || "");
+          const task = await startBackgroundTask(msg.data?.sessionId || "default", msg.data?.command || "");
           sendWs(ws, { type: "background_started", data: task });
           break;
         }
@@ -548,7 +543,7 @@ function updateStatus(): void {
   globalCtx.ui.setStatus("gateway", statusText);
 }
 
-export default function (pi: ExtensionAPI) {
+export default async function (pi: ExtensionAPI): Promise<void> {
   config = loadConfig();
   state = {
     running: false,
@@ -557,12 +552,8 @@ export default function (pi: ExtensionAPI) {
     sessions: new Map(),
   };
 
-  // Initialize stores
-  initSessionStore();
-  initSecurityStore();
-  initBackgroundTasks();
+  await Promise.all([initSessionStore(), initSecurityStore(), initBackgroundTasks()]);
 
-  // Register commands
   pi.registerCommand("gateway", {
     description: "Manage Hermes-style messaging gateway",
     getArgumentCompletions: (prefix: string) => {
@@ -677,7 +668,7 @@ export default function (pi: ExtensionAPI) {
         case "pair": {
           const code = parts[1]?.toUpperCase();
           if (!code) {
-            const pending = listPendingPairingCodes();
+            const pending = await listPendingPairingCodes();
             ctx.ui.notify(
               "Pending pairing codes:\n" +
               (pending.length > 0 
@@ -688,7 +679,7 @@ export default function (pi: ExtensionAPI) {
             return;
           }
 
-          if (approvePairingCode(code)) {
+          if (await approvePairingCode(code)) {
             ctx.ui.notify("Pairing code approved", "info");
           } else {
             ctx.ui.notify(`❌ Invalid or expired pairing code`, "error");
@@ -700,7 +691,7 @@ export default function (pi: ExtensionAPI) {
           const platform = parts[1] as Platform;
           const userId = parts[2];
           if (!platform || !userId) {
-            const list = listAllowlistedUsers();
+            const list = await listAllowlistedUsers();
             ctx.ui.notify(
               "Allowlisted users:\n" +
               (list.length > 0
@@ -711,13 +702,13 @@ export default function (pi: ExtensionAPI) {
             return;
           }
 
-          addToAllowlist(platform, userId);
+          await addToAllowlist(platform, userId);
           ctx.ui.notify(`Added ${userId} to allowlist`, "info");
           return;
         }
 
         case "sessions": {
-          const sessions = listSessions();
+          const sessions = await listSessions();
           ctx.ui.notify(
             "Active sessions:\n" +
             sessions.slice(0, 10).map(s => 
@@ -729,7 +720,7 @@ export default function (pi: ExtensionAPI) {
         }
 
         case "tasks": {
-          const tasks = listTasks();
+          const tasks = await listTasks();
           ctx.ui.notify(
             "Background tasks:\n" +
             tasks.slice(0, 10).map(t => 
@@ -803,7 +794,7 @@ export default function (pi: ExtensionAPI) {
     description: "List active gateway sessions",
     parameters: Type.Object({}),
     async execute(_toolCallId, _params, _signal, _onUpdate, _ctx) {
-      const sessions = listSessions();
+      const sessions = await listSessions();
       return {
         content: [{
           type: "text",
@@ -828,7 +819,7 @@ export default function (pi: ExtensionAPI) {
       status: Type.Optional(Type.String()),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
-      const tasks = listTasks(params.status as any);
+      const tasks = await listTasks(params.status as any);
       return {
         content: [{
           type: "text",
@@ -862,7 +853,7 @@ export default function (pi: ExtensionAPI) {
           if (!platform || !userId) {
             return { content: [{ type: "text", text: "platform and userId required" }], details: { error: true } };
           }
-          const pairingCode = generatePairingCode(platform as Platform, userId);
+          const pairingCode = await generatePairingCode(platform as Platform, userId);
           return {
             content: [{
               type: "text",
@@ -875,14 +866,14 @@ export default function (pi: ExtensionAPI) {
           if (!code) {
             return { content: [{ type: "text", text: "code required" }], details: { error: true } };
           }
-          const success = approvePairingCode(code);
+          const success = await approvePairingCode(code);
           return {
             content: [{ type: "text", text: success ? "✅ Code approved" : "❌ Invalid/expired" }],
             details: { success },
           };
         }
         case "list": {
-          const pending = listPendingPairingCodes();
+          const pending = await listPendingPairingCodes();
           return {
             content: [{
               type: "text",
