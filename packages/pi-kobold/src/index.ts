@@ -8,16 +8,19 @@
  * - pi-learn (persistent memory & reasoning)
  * - Dev tools (skill/extension scaffolding)
  *
- * Architecture: Each pi-* package declares `pi.extensions` in its
- * package.json, so pi auto-discovers and loads them all independently.
- * pi-kobold just adds its own unique tools on top.
+ * Architecture: pi's loader does NOT auto-discover sub-extensions from
+ * node_modules. This meta-extension explicitly loads each sub-extension
+ * by importing its factory and calling it with the same ExtensionAPI.
+ * This makes `pi install @0xkobold/pi-kobold` a single-step install that
+ * pulls all bundled extensions via deps and activates them.
  *
  * Standalone use: `pi install @0xkobold/pi-ollama` → works independently
- * Bundle use: `pi install @0xkobold/pi-kobold` → pulls everything via deps
+ * Bundle use: `pi install @0xkobold/pi-kobold` → loads everything
  * Pick & mix: `pi install @0xkobold/pi-kobold @0xkobold/pi-learn` → no conflicts
+ *   (pi-learn loads once; duplicate registration is guarded)
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, ExtensionFactory } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { mkdir, writeFile } from "fs/promises";
 import { join } from "path";
@@ -29,6 +32,12 @@ import {
   formatOrchestrateResult,
   type LLMExecutor,
 } from "@0xkobold/pi-orchestration";
+
+// Sub-extension factories — loaded by pi-kobold so users don't need manual setup
+import orchestrationExtension from "@0xkobold/pi-orchestration";
+import gatewayExtension from "@0xkobold/pi-gateway";
+import ollamaExtension from "@0xkobold/pi-ollama";
+import learnExtension from "@0xkobold/pi-learn";
 
 // Re-export orchestration types and functions for library consumers
 export type { OrchestrateOptions, OrchestrateResult, ChainResult, ParallelResult } from "@0xkobold/pi-orchestration";
@@ -315,21 +324,58 @@ npm test
 // Extension Entry Point
 // ============================================================================
 
+function detectExtensions(pi: ExtensionAPI) {
+  const tools = pi.getAllTools().map(t => t.name);
+  const hasTool = (prefix: string) => tools.some(name => name.startsWith(prefix));
+
+  const commands = pi.getCommands?.() ?? [];
+  const commandNames = commands.map(c => typeof c === "string" ? c : c.name);
+  const hasCommand = (name: string) => commandNames.includes(name) || commandNames.some(n => n.startsWith(name));
+
+  return {
+    orchestration: hasTool("orchestrate"),
+    gateway: hasTool("gateway_"),
+    ollama: hasTool("ollama") || hasCommand("ollama"),
+    learn: hasTool("learn_"),
+  };
+}
+
 export default async (pi: ExtensionAPI): Promise<void> => {
-  console.log("[pi-kobold] Meta-extension loading (orchestration, gateway, ollama, learn auto-loaded via pi)");
+  // --------------------------------------------------------------------------
+  // Load sub-extensions with duplicate guard
+  //
+  // pi's loader does NOT auto-discover sub-extensions from node_modules.
+  // We explicitly load each bundled sub-extension so that installing
+  // pi-kobold alone activates everything.
+  //
+  // If a sub-extension was already loaded by pi's extension loader
+  // (e.g., root pi-config.ts lists it separately), we skip it to avoid
+  // re-running side effects like database init or event listener setup.
+  // pi's registerTool/registerCommand use Map<string, ...> so tool
+  // dedup is implicit, but side effects (DB connections, event handlers)
+  // are not idempotent.
+  // --------------------------------------------------------------------------
+  const subExtensions: Array<{ name: string; factory: ExtensionFactory }> = [
+    { name: "pi-orchestration", factory: orchestrationExtension },
+    { name: "pi-gateway",      factory: gatewayExtension },
+    { name: "pi-ollama",      factory: ollamaExtension },
+    { name: "pi-learn",       factory: learnExtension },
+  ];
 
-  // Check which sub-extensions pi auto-loaded
-  const allTools = pi.getAllTools();
-  const toolNames = new Set(allTools.map(t => t.name));
+  for (const { name, factory } of subExtensions) {
+    try {
+      await factory(pi);
+      console.log(`[pi-kobold] ✅ Loaded sub-extension: ${name}`);
+    } catch (err) {
+      if (err instanceof Error && err.message.includes("already")) {
+        console.log(`[pi-kobold] ⏭️ Skipping ${name} (already loaded)`);
+      } else {
+        console.error(`[pi-kobold] ⚠️ Failed to load sub-extension ${name}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+  }
 
-  const has = (prefix: string) => [...toolNames].some(name => name.startsWith(prefix));
-
-  const orchestrationLoaded = has("orchestrate");
-  const gatewayLoaded = has("gateway_");
-  const ollamaLoaded = has("ollama") || has("ollama-status") || has("ollama_info");
-  const learnLoaded = has("learn_");
-
-  console.log(`[pi-kobold] Auto-detected extensions: orchestration=${orchestrationLoaded}, gateway=${gatewayLoaded}, ollama=${ollamaLoaded}, learn=${learnLoaded}`);
+  console.log("[pi-kobold] Meta-extension loading — registering kobold-specific tools");
 
   // --------------------------------------------------------------------------
   // kobold_initialize - Initialize Kobold with LLM
@@ -367,17 +413,16 @@ export default async (pi: ExtensionAPI): Promise<void> => {
 
       initializeKobold(executor);
 
+      const detected = detectExtensions(pi);
+
       return {
         content: [{
           type: "text" as const,
-          text: `✅ pi-kobold initialized\n\nExtensions detected:\n- Orchestration: ${orchestrationLoaded ? "✅" : "❌"}\n- Gateway: ${gatewayLoaded ? "✅" : "❌"}\n- Ollama: ${ollamaLoaded ? "✅" : "❌"}\n- Learn: ${learnLoaded ? "✅" : "❌"}`,
+          text: `✅ pi-kobold initialized\n\nExtensions detected:\n- Orchestration: ${detected.orchestration ? "✅" : "❌"}\n- Gateway: ${detected.gateway ? "✅" : "❌"}\n- Ollama: ${detected.ollama ? "✅" : "❌"}\n- Learn: ${detected.learn ? "✅" : "❌"}`,
         }],
         details: {
           initialized: true,
-          orchestration: orchestrationLoaded,
-          gateway: gatewayLoaded,
-          ollama: ollamaLoaded,
-          learn: learnLoaded,
+          ...detected,
         },
       };
     },
@@ -564,20 +609,29 @@ export default async (pi: ExtensionAPI): Promise<void> => {
 
     async execute(toolCallId, params, signal, onUpdate, ctx) {
       const tools = pi.getAllTools().map(t => t.name);
-      const has = (prefix: string) => tools.some(name => name.startsWith(prefix));
+      const hasTool = (prefix: string) => tools.some(name => name.startsWith(prefix));
+
+      // pi-ollama registers providers + commands, not tools
+      const commands = pi.getCommands?.() ?? [];
+      const commandNames = commands.map(c => typeof c === "string" ? c : c.name);
+      const hasCommand = (name: string) => commandNames.includes(name) || commandNames.some(n => n.startsWith(name));
+
+      const hasOllama = hasTool("ollama") || hasCommand("ollama");
 
       const lines: string[] = [
         "## 🦎 pi-kobold Status\n",
         "| Subsystem | Status |",
         "|-----------|--------|",
-        `| 🔀 Orchestration | ${has("orchestrate") ? "✅ Loaded" : "⚠️ Not found"} |`,
-        `| 🌐 Gateway | ${has("gateway_") ? "✅ Loaded" : "⚠️ Not found"} |`,
-        `| 🦙 Ollama | ${has("ollama") ? "✅ Loaded" : "⚠️ Not found"} |`,
-        `| 🧠 Learn | ${has("learn_") ? "✅ Loaded" : "⚠️ Not found"} |`,
+        `| 🔀 Orchestration | ${hasTool("orchestrate") ? "✅ Loaded" : "⚠️ Not found"} |`,
+        `| 🌐 Gateway | ${hasTool("gateway_") ? "✅ Loaded" : "⚠️ Not found"} |`,
+        `| 🦙 Ollama | ${hasOllama ? "✅ Loaded" : "⚠️ Not found"} |`,
+        `| 🧠 Learn | ${hasTool("learn_") ? "✅ Loaded" : "⚠️ Not found"} |`,
         `| 🔧 Dev Tools | ✅ Active |`,
         `| 📊 Status | ✅ Active |\n`,
         "### All Registered Tools\n",
         ...tools.sort().map(name => `- \`${name}\``),
+        "\n### Registered Commands\n",
+        ...commandNames.sort().map(name => `- /${name}`),
       ];
 
       return {
@@ -585,15 +639,15 @@ export default async (pi: ExtensionAPI): Promise<void> => {
         details: {
           status: "active",
           tools,
-          orchestration: has("orchestrate"),
-          gateway: has("gateway_"),
-          ollama: has("ollama"),
-          learn: has("learn_"),
+          orchestration: hasTool("orchestrate"),
+          gateway: hasTool("gateway_"),
+          ollama: hasOllama,
+          learn: hasTool("learn_"),
+          commands: commandNames,
         },
       };
     },
   });
 
-  console.log("[pi-kobold] Extension loaded — 4 unique tools registered (kobold_initialize, kobold_create_skill, kobold_create_extension, kobold_status)");
-  console.log(`[pi-kobold] Auto-detected: orchestration=${orchestrationLoaded}, gateway=${gatewayLoaded}, ollama=${ollamaLoaded}, learn=${learnLoaded}`);
+  console.log("[pi-kobold] Extension loaded — 4 kobold tools + sub-extensions registered");
 };

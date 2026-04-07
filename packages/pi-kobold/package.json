@@ -1,6 +1,6 @@
 {
   "name": "@0xkobold/pi-kobold",
-  "version": "0.4.0",
+  "version": "0.5.3",
   "description": "Meta-extension for 0xKobold that bundles pi-orchestration, pi-gateway, pi-ollama, pi-learn, and development tools",
   "author": "0xKobold",
   "license": "MIT",
@@ -38,18 +38,17 @@
     ]
   },
   "peerDependencies": {
-    "@mariozechner/pi-coding-agent": ">=0.65.0",
-    "@sinclair/typebox": ">=0.32.0",
-    "@0xkobold/pi-orchestration": "^0.3.0",
-    "@0xkobold/pi-gateway": "^0.4.0",
+    "@0xkobold/pi-learn": "^0.3.0",
     "@0xkobold/pi-ollama": "^0.4.0",
-    "@0xkobold/pi-learn": "^0.3.0"
+    "@0xkobold/pi-orchestration": "^0.3.0",
+    "@mariozechner/pi-coding-agent": ">=0.65.0",
+    "@sinclair/typebox": ">=0.32.0"
   },
   "dependencies": {
-    "@0xkobold/pi-orchestration": "^0.3.0",
-    "@0xkobold/pi-gateway": "^0.4.0",
+    "@0xkobold/pi-gateway": "^0.5.0",
+    "@0xkobold/pi-learn": "^0.3.0",
     "@0xkobold/pi-ollama": "^0.4.0",
-    "@0xkobold/pi-learn": "^0.3.0"
+    "@0xkobold/pi-orchestration": "^0.3.0"
   },
   "devDependencies": {
     "@types/bun": "latest",
