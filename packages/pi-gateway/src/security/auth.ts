@@ -11,7 +11,7 @@
 import { Database } from "bun:sqlite";
 import { join } from "path";
 import { homedir } from "os";
-import { existsSync, mkdirSync } from "fs";
+import { existsSync, mkdirSync, readFileSync } from "fs";
 import { randomBytes, createHmac, timingSafeEqual } from "node:crypto";
 
 export type Platform = "discord" | "telegram" | "slack" | "whatsapp" | "signal" | "sms" | "email" | "matrix" | "web" | "websocket";
@@ -278,7 +278,7 @@ const CONFIG_FILE = join(KOBOLD_DIR, "gateway-security.json");
 function getSecurityConfig(): SecurityConfig {
   try {
     if (existsSync(CONFIG_FILE)) {
-      const content = Bun.file(CONFIG_FILE).text();
+      const content = readFileSync(CONFIG_FILE, "utf-8");
       return JSON.parse(content);
     }
   } catch {

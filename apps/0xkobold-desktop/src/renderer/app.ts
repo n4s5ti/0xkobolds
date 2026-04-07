@@ -2,29 +2,27 @@
  * 0xKobold Desktop - Main Application Component
  * 
  * Root component that sets up the app layout:
- * - Sidebar: Agent tree, skills, navigation
- * - Main area: Chat panel, content
- * - Status bar: Gateway status, session info
+ * - Sidebar: Agent tree, skills, navigation (t3.chat style — dark, compact)
+ * - Main area: Chat panel or welcome screen (no titlebar — clean)
+ * - Status bar: Minimal bottom bar with model/gateway info
  *
- * Uses Lit (lit-html) for templating, consistent with pi-web-ui.
+ * Inspired by t3.chat's layout: sidebar + chat, no wasted header space.
  */
 
 import { LitElement, html, css } from "lit";
-import { customElement, state } from "@mariozechner/mini-lit";
+import { customElement, state } from "./utils/safe-custom-element";
 import { when } from "lit/directives/when.js";
 import { setAppStorage } from "@mariozechner/pi-web-ui";
 
-// Import child components
 import "./components/Sidebar";
 import "./components/StatusBar";
 import "./components/WelcomePanel";
 import "./components/KoboldChatPanel";
 
-// Stores
 import { koboldStorage } from "./stores/KoboldStorage";
 
-// Types
 import type { DesktopSettings } from "../shared/api-types";
+import type { KoboldChatPanel } from "./components/KoboldChatPanel";
 
 declare global {
   interface Window {
@@ -90,35 +88,21 @@ export class KoboldApp extends LitElement {
 
     .content {
       flex: 1;
-      overflow: auto;
+      min-height: 0;
       display: flex;
       flex-direction: column;
     }
 
-    .titlebar {
-      height: 40px;
+    /* Titlebar is drag-only, no visible chrome — t3.chat style */
+    .titlebar-drag {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 32px;
       -webkit-app-region: drag;
-      display: flex;
-      align-items: center;
-      padding: 0 var(--spacing-md);
-      border-bottom: 1px solid var(--sidebar-border);
-    }
-
-    .titlebar.no-drag {
-      -webkit-app-region: no-drag;
-    }
-
-    .logo {
-      display: flex;
-      align-items: center;
-      gap: var(--spacing-sm);
-      font-weight: 600;
-      font-size: 1.125rem;
-      color: var(--color-text-primary);
-    }
-
-    .logo-emoji {
-      font-size: 1.25rem;
+      z-index: 10;
+      pointer-events: none;
     }
 
     .loading {
@@ -152,25 +136,36 @@ export class KoboldApp extends LitElement {
   `;
 
   @state()
-  private settings: DesktopSettings | null = null;
+  private declare settings: DesktopSettings | null;
 
   @state()
-  private isLoading = true;
+  private declare isLoading: boolean;
 
   @state()
-  private error: string | null = null;
+  private declare error: string | null;
 
   @state()
-  private showChat = false;
+  private declare showChat: boolean;
+
+  /** Currently active session ID — set when user clicks a session in sidebar */
+  @state()
+  private declare activeSessionId: string | null;
 
   private settingsUnsubscribe?: () => void;
+  private chatPanelRef?: KoboldChatPanel | null;
+
+  constructor() {
+    super();
+    this.settings = null;
+    this.isLoading = true;
+    this.error = null;
+    this.showChat = false;
+    this.activeSessionId = null;
+  }
 
   connectedCallback(): void {
     super.connectedCallback();
-    
-    // 1. Setup Global Storage for pi-web-ui components
     setAppStorage(koboldStorage);
-    
     this.loadSettings();
   }
 
@@ -196,8 +191,26 @@ export class KoboldApp extends LitElement {
     }
   }
 
-  private toggleChat() {
-    this.showChat = !this.showChat;
+  /** Start a fresh chat (clear session) */
+  private startNewChat() {
+    this.activeSessionId = null;
+    this.showChat = true;
+  }
+
+  /** User clicked a session in the sidebar — switch to that chat */
+  private handleSelectSession(e: CustomEvent) {
+    const { id } = e.detail;
+    this.activeSessionId = id;
+    this.showChat = true;
+
+    // If the chat panel is already rendered, load the session immediately.
+    // Otherwise, updated() will load it after the panel mounts.
+    this.updateComplete.then(() => {
+      const panel = this.shadowRoot?.querySelector("kobold-chat-panel") as any;
+      if (panel?.loadSession) {
+        panel.loadSession(id);
+      }
+    });
   }
 
   render() {
@@ -229,25 +242,22 @@ export class KoboldApp extends LitElement {
       <aside class="sidebar">
         <kobold-sidebar
           @action=${(e: any) => {
-            if (e.detail === 'new-chat') this.toggleChat();
+            if (e.detail === 'new-chat') this.startNewChat();
           }}
+          @select-session=${this.handleSelectSession}
           ?compact=${this.settings?.["desktop.appearance.compactMode"]}
         ></kobold-sidebar>
       </aside>
 
       <main class="main">
-        <div class="titlebar">
-          <div class="logo">
-            <span class="logo-emoji">🐉</span>
-            <span>0xKobold</span>
-          </div>
-        </div>
+        <!-- Invisible drag region for window management -->
+        <div class="titlebar-drag"></div>
 
         <div class="content">
           ${when(
             this.showChat,
             () => html`<kobold-chat-panel></kobold-chat-panel>`,
-            () => html`<kobold-welcome-panel @new-chat=${this.toggleChat}></kobold-welcome-panel>`
+            () => html`<kobold-welcome-panel @new-chat=${this.startNewChat}></kobold-welcome-panel>`
           )}
         </div>
       </main>

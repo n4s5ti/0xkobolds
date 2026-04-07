@@ -29,13 +29,13 @@ export default defineConfig({
     build: {
       lib: {
         entry: resolve(__dirname, 'src/preload/index.ts'),
-        formats: ['es'],
+        formats: ['cjs'],
         fileName: () => 'index.js',
       },
       outDir: 'dist/preload',
       rollupOptions: {
         output: {
-          format: 'es',
+          format: 'cjs',
         },
       },
     },
@@ -45,6 +45,34 @@ export default defineConfig({
         '@': resolve(__dirname, 'src'),
         '@preload': resolve(__dirname, 'src/preload'),
         '@shared': resolve(__dirname, 'src/shared'),
+      },
+    },
+  },
+  renderer: {
+    root: resolve(__dirname, 'src/renderer'),
+    build: {
+      outDir: resolve(__dirname, 'dist/renderer'),
+      emptyOutDir: true,
+      rollupOptions: {
+        input: resolve(__dirname, 'src/renderer/index.html'),
+      },
+    },
+    resolve: {
+      alias: {
+        '@': resolve(__dirname, 'src'),
+        '@renderer': resolve(__dirname, 'src/renderer'),
+        '@shared': resolve(__dirname, 'src/shared'),
+      },
+    },
+    optimizeDeps: {
+      include: ['lit', 'lit/directives/when.js', '@mariozechner/mini-lit', '@mariozechner/pi-web-ui'],
+    },
+    esbuild: {
+      target: 'es2022',
+      tsconfigRaw: {
+        compilerOptions: {
+          experimentalDecorators: true,
+        },
       },
     },
   },

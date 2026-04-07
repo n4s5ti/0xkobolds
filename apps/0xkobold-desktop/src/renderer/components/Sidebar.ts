@@ -1,15 +1,17 @@
 /**
- * Sidebar Component
+ * Sidebar Component — t3.chat inspired
  * 
  * Contains:
- * - Agent tree panel (hierarchical view)
- * - Skills browser
- * - Session management
- * - Navigation
+ * - Model selector at top
+ * - Session/conversation list (scrollable)
+ * - New Chat button prominently placed
+ * - Settings at bottom
+ *
+ * Darker than the main area, warm muted text colors.
  */
 
 import { LitElement, html, css } from "lit";
-import { customElement, state } from "@mariozechner/mini-lit";
+import { customElement, state } from "../utils/safe-custom-element";
 import "./AgentTreePanel";
 import "./SkillPanel";
 
@@ -21,126 +23,214 @@ export class Sidebar extends LitElement {
       flex-direction: column;
       height: 100%;
       background-color: var(--sidebar-bg);
+      color: var(--color-text-secondary);
     }
 
-    .header {
+    /* ---- Model Selector ---- */
+    .model-selector {
       padding: var(--spacing-md);
       border-bottom: 1px solid var(--sidebar-border);
     }
 
-    .logo {
-      display: flex;
-      align-items: center;
-      gap: var(--spacing-sm);
-      font-weight: 600;
-      font-size: 1.125rem;
-      color: var(--color-accent);
+    .model-select {
+      width: 100%;
+      padding: var(--spacing-sm) var(--spacing-md);
+      background: var(--color-bg-tertiary);
+      border: 1px solid var(--sidebar-border);
+      border-radius: var(--radius-lg);
+      color: var(--color-text-primary);
+      font-size: 0.8125rem;
+      font-family: inherit;
+      cursor: pointer;
+      appearance: none;
+      -webkit-appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 5l3 3 3-3' fill='none' stroke='%237a6b7e' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 10px center;
+      padding-right: 28px;
+      transition: border-color var(--transition-fast);
     }
 
-    .logo-emoji {
-      font-size: 1.25rem;
+    .model-select:hover {
+      border-color: var(--color-border-hover);
     }
 
+    .model-select:focus {
+      outline: none;
+      border-color: var(--color-accent);
+    }
+
+    /* ---- Navigation Tabs ---- */
     .nav {
       display: flex;
-      gap: var(--spacing-xs);
-      padding: var(--spacing-sm);
-      border-bottom: 1px solid var(--sidebar-border);
+      padding: var(--spacing-sm) var(--spacing-sm) 0;
+      gap: 2px;
     }
 
     .nav-btn {
       flex: 1;
-      padding: var(--spacing-sm);
+      padding: 6px 0;
       background: transparent;
-      border: 1px solid transparent;
+      border: none;
       border-radius: var(--radius-md);
-      color: var(--color-text-secondary);
+      color: var(--color-text-muted);
       cursor: pointer;
-      font-size: 0.75rem;
+      font-size: 0.7rem;
+      font-weight: 500;
       text-align: center;
       transition: all var(--transition-fast);
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
     }
 
     .nav-btn:hover {
+      color: var(--color-text-secondary);
       background: var(--color-bg-tertiary);
-      color: var(--color-text-primary);
     }
 
     .nav-btn.active {
-      background: var(--color-accent);
-      color: var(--color-bg-primary);
-      border-color: var(--color-accent);
+      color: var(--color-text-primary);
+      background: var(--color-bg-tertiary);
     }
 
-    .content {
-      flex: 1;
-      overflow: hidden;
-    }
-
+    /* ---- Session List ---- */
     .sessions-list {
+      flex: 1;
+      overflow-y: auto;
       padding: var(--spacing-sm);
+      scrollbar-width: thin;
+      scrollbar-color: var(--color-bg-tertiary) transparent;
     }
 
     .session-item {
-      padding: var(--spacing-md);
-      background: var(--color-bg-secondary);
-      border: 1px solid var(--color-border);
+      padding: var(--spacing-sm) var(--spacing-md);
       border-radius: var(--radius-md);
-      margin-bottom: var(--spacing-sm);
       cursor: pointer;
-      transition: all var(--transition-fast);
+      transition: background var(--transition-fast);
+      margin-bottom: 2px;
+      border-left: 2px solid transparent;
     }
 
     .session-item:hover {
       background: var(--color-bg-tertiary);
-      border-color: var(--color-accent);
+    }
+
+    .session-item.selected {
+      background: var(--color-bg-tertiary);
+      border-left-color: var(--color-accent);
     }
 
     .session-name {
-      font-size: 0.875rem;
-      font-weight: 500;
+      font-size: 0.8125rem;
+      font-weight: 450;
       color: var(--color-text-primary);
-      margin-bottom: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .session-meta {
-      font-size: 0.75rem;
+      font-size: 0.6875rem;
       color: var(--color-text-muted);
+      margin-top: 2px;
     }
 
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: var(--spacing-xl);
+      color: var(--color-text-muted);
+      text-align: center;
+      gap: var(--spacing-sm);
+    }
+
+    .empty-state-icon {
+      font-size: 2rem;
+      opacity: 0.25;
+    }
+
+    .empty-state-text {
+      font-size: 0.8125rem;
+    }
+
+    /* ---- Footer — New Chat + Settings ---- */
     .footer {
-      padding: var(--spacing-md);
+      padding: var(--spacing-sm) var(--spacing-md);
       border-top: 1px solid var(--sidebar-border);
       display: flex;
       gap: var(--spacing-sm);
     }
 
-    .footer-btn {
+    .new-chat-btn {
       flex: 1;
-      padding: var(--spacing-sm);
-      background: var(--color-bg-tertiary);
-      border: 1px solid var(--color-border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--spacing-sm);
+      padding: 8px var(--spacing-md);
+      background: var(--color-accent);
+      color: var(--color-bg-primary);
+      border: none;
       border-radius: var(--radius-md);
-      color: var(--color-text-secondary);
+      font-weight: 600;
+      font-size: 0.8125rem;
       cursor: pointer;
-      font-size: 0.875rem;
       transition: all var(--transition-fast);
+      font-family: inherit;
     }
 
-    .footer-btn:hover {
+    .new-chat-btn:hover {
+      background: var(--color-accent-light);
+      transform: translateY(-1px);
+    }
+
+    .new-chat-btn:active {
+      transform: translateY(0);
+    }
+
+    .settings-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      background: var(--color-bg-tertiary);
+      border: 1px solid var(--sidebar-border);
+      border-radius: var(--radius-md);
+      color: var(--color-text-muted);
+      cursor: pointer;
+      transition: all var(--transition-fast);
+      font-size: 1rem;
+    }
+
+    .settings-btn:hover {
       background: var(--color-border-hover);
       color: var(--color-text-primary);
     }
   `;
 
   @state()
-  private activeTab: 'agents' | 'skills' | 'sessions' = 'agents';
+  private declare activeTab: 'sessions' | 'agents' | 'skills';
 
   @state()
-  private sessions: any[] = [];
+  private declare sessions: any[];
 
   @state()
-  private compact = false;
+  private declare compact: boolean;
+
+  /** The currently active session ID, set by parent app */
+  @state()
+  private declare selectedId: string | null;
+
+  constructor() {
+    super();
+    this.activeTab = 'sessions';
+    this.sessions = [];
+    this.compact = false;
+    this.selectedId = null;
+  }
 
   connectedCallback() {
     super.connectedCallback();
@@ -156,10 +246,9 @@ export class Sidebar extends LitElement {
   }
 
   private async handleNewSession() {
-    // Clear current session and start fresh
     try {
       await window.koboldAPI.agent.clear();
-      this.dispatchEvent(new CustomEvent('action', { 
+      this.dispatchEvent(new CustomEvent('action', {
         detail: 'new-chat',
         bubbles: true,
         composed: true,
@@ -173,77 +262,69 @@ export class Sidebar extends LitElement {
     console.log('[Sidebar] Settings clicked');
   }
 
-  private handleHelp() {
-    console.log('[Sidebar] Help clicked');
-  }
-
   render() {
     return html`
-      <div class="header">
-        <div class="logo">
-          <span class="logo-emoji">🐉</span>
-          <span>0xKobold</span>
-        </div>
+      <!-- Model Selector -->
+      <div class="model-selector">
+        <select class="model-select" aria-label="Select model">
+          <option>🧠 glm-5.1:cloud</option>
+        </select>
       </div>
 
+      <!-- Tab Navigation -->
       <nav class="nav">
-        <button
-          class="nav-btn ${this.activeTab === 'agents' ? 'active' : ''}"
-          @click=${() => (this.activeTab = 'agents')}
-        >
-          🤖 Agents
-        </button>
-        <button
-          class="nav-btn ${this.activeTab === 'skills' ? 'active' : ''}"
-          @click=${() => (this.activeTab = 'skills')}
-        >
-          🛠️ Skills
-        </button>
         <button
           class="nav-btn ${this.activeTab === 'sessions' ? 'active' : ''}"
           @click=${() => (this.activeTab = 'sessions')}
-        >
-          💬 Sessions
-        </button>
+        >Chats</button>
+        <button
+          class="nav-btn ${this.activeTab === 'agents' ? 'active' : ''}"
+          @click=${() => (this.activeTab = 'agents')}
+        >Agents</button>
+        <button
+          class="nav-btn ${this.activeTab === 'skills' ? 'active' : ''}"
+          @click=${() => (this.activeTab = 'skills')}
+        >Skills</button>
       </nav>
 
-      <div class="content">
+      <!-- Content -->
+      <div class="sessions-list">
         ${this.activeTab === 'agents' ? html`
           <agent-tree-panel></agent-tree-panel>
         ` : this.activeTab === 'skills' ? html`
           <skill-panel></skill-panel>
-        ` : html`
-          <div class="sessions-list">
-            ${this.sessions.length === 0 ? html`
-              <div style="padding: var(--spacing-lg); text-align: center; color: var(--color-text-muted);">
-                <div style="font-size: 2rem; opacity: 0.3;">💬</div>
-                <div style="margin-top: var(--spacing-sm);">No saved sessions</div>
-              </div>
-            ` : this.sessions.map(session => html`
-              <div class="session-item" @click=${() => this.loadSession(session)}>
-                <div class="session-name">${session.title}</div>
-                <div class="session-meta">${session.messageCount} messages</div>
-              </div>
-            `)}
+        ` : this.sessions.length === 0 ? html`
+          <div class="empty-state">
+            <div class="empty-state-icon">💬</div>
+            <div class="empty-state-text">No conversations yet</div>
           </div>
-        `}
+        ` : this.sessions.map(session => html`
+          <div class="session-item ${session.id === this.selectedId ? 'selected' : ''}" @click=${() => this.loadSession(session)}>
+            <div class="session-name">${session.title}</div>
+            <div class="session-meta">${session.messageCount} messages</div>
+          </div>
+        `)}
       </div>
 
+      <!-- Footer -->
       <div class="footer">
-        <button class="footer-btn" @click=${this.handleNewSession}>➕ New Chat</button>
-        <button class="footer-btn" @click=${this.handleSettings}>⚙️</button>
+        <button class="new-chat-btn" @click=${this.handleNewSession}>
+          <span>✨</span> New Chat
+        </button>
+        <button class="settings-btn" @click=${this.handleSettings} title="Settings">
+          ⚙️
+        </button>
       </div>
     `;
   }
 
   private async loadSession(session: any) {
-    try {
-      const messages = await window.koboldAPI.sessions.load(session.id);
-      // TODO: Display loaded session
-      console.log('[Sidebar] Loaded session:', session.id, messages.length, 'messages');
-    } catch (err) {
-      console.error('[Sidebar] Failed to load session:', err);
-    }
+    this.selectedId = session.id;
+    this.dispatchEvent(new CustomEvent('select-session', {
+      detail: { id: session.id, title: session.title },
+      bubbles: true,
+      composed: true,
+    }));
   }
 }
 

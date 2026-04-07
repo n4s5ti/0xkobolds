@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "skills": {
+    "chat-ui": {
+      "source": "inferen-sh/skills",
+      "sourceType": "github",
+      "computedHash": "5628ac2ae8967ab7ff24ddfd8386ee746cd04d4ec907407690daa9f371b9df6b"
+    },
+    "electron": {
+      "source": "vercel-labs/agent-browser",
+      "sourceType": "github",
+      "computedHash": "637d08276e7d16c4a4fa1a5d661cb88830ce39679053b74d0b48a7f792667f91"
+    },
+    "vite": {
+      "source": "antfu/skills",
+      "sourceType": "github",
+      "computedHash": "867ff66238f3152e9c494339ad08dc432dd0df5bcf5cc7a00b61a72b580eb908"
+    }
+  }
+}

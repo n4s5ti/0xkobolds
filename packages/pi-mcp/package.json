@@ -1,0 +1,72 @@
+{
+  "name": "@0xkobold/pi-mcp",
+  "version": "0.2.0",
+  "description": "Model Context Protocol (MCP) integration for pi-coding-agent. Connect to any MCP server (stdio, SSE, StreamableHTTP) and use its tools, resources, and prompts natively.",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "mcp",
+    "model-context-protocol",
+    "tools",
+    "resources",
+    "prompts",
+    "0xkobold"
+  ],
+  "author": "0xKobold",
+  "license": "MIT",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./src/index.ts",
+      "types": "./dist/index.d.ts"
+    },
+    "./client": {
+      "import": "./src/client/index.ts",
+      "types": "./dist/client/index.d.ts"
+    },
+    "./config": {
+      "import": "./src/config/index.ts",
+      "types": "./dist/config/index.d.ts"
+    }
+  },
+  "files": [
+    "dist/",
+    "src/",
+    "README.md",
+    "SKILL.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "bun test",
+    "prepublishOnly": "rm -rf dist && tsc"
+  },
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ],
+    "skills": [
+      "./skills/mcp/SKILL.md"
+    ]
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0"
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": ">=0.62.0",
+    "@sinclair/typebox": ">=0.32.0"
+  },
+  "devDependencies": {
+    "@mariozechner/pi-coding-agent": ">=0.62.0",
+    "@sinclair/typebox": ">=0.32.0",
+    "@types/bun": "latest",
+    "@types/node": "^20.0.0",
+    "typescript": "^6.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/moikapy/0xkobolds"
+  }
+}

@@ -11,26 +11,22 @@
 @import "./draconic-theme.css";
 
 
-/* Custom fonts */
-@font-face {
-  font-family: 'Inter';
-  src: url('https://fonts.gstatic.com/s/inter/v13/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hjp-Ek-_EeA.woff2') format('woff2');
-  font-weight: 100 900;
-  font-display: swap;
-}
+/* Use system font stack — no remote font fetch needed in Electron */
+/* Inter is pre-installed on many systems, with good fallbacks */
 
 :root {
-  /* Core colors */
-  --color-bg-primary: #0f172a;
-  --color-bg-secondary: #1e293b;
-  --color-bg-tertiary: #334155;
+  /* Core colors — t3.chat inspired deep purple-black palette */
+  --color-bg-primary: #21141e;   /* Deep purple-black; main chat area */
+  --color-bg-secondary: #131314;  /* Near-black; sidebar */
+  --color-bg-tertiary: #2a2430;  /* Elevated surfaces; hover states */
+  --color-bg-elevated: #1f1a24;  /* Cards, panels, overlays */
   
-  /* Text colors */
-  --color-text-primary: #f8fafc;
-  --color-text-secondary: #94a3b8;
-  --color-text-muted: #64748b;
+  /* Text colors — warm pinkish-white for muted, cool white for primary */
+  --color-text-primary: #f9f8fb;  /* Bright white with warm undertone */
+  --color-text-secondary: #e7d0dd;  /* Warm muted pink-white */
+  --color-text-muted: #7a6b7e;   /* Desaturated purple-gray */
   
-  /* Accent colors - Draconic Gold/Amber */
+  /* Accent colors — Draconic Gold/Amber (kept as brand color) */
   --color-accent: #f59e0b;
   --color-accent-light: #fbbf24;
   --color-accent-dark: #d97706;
@@ -39,16 +35,16 @@
   --color-success: #22c55e;
   --color-warning: #f59e0b;
   --color-error: #ef4444;
-  --color-info: #3b82f6;
+  --color-info: #8b5cf6;
   
-  /* Border */
-  --color-border: #334155;
-  --color-border-hover: #475569;
+  /* Border — subtle purple-gray */
+  --color-border: #27242c;       /* Barely visible separators */
+  --color-border-hover: #3d3644;
   
   /* Sidebar */
   --sidebar-width: 280px;
-  --sidebar-bg: var(--color-bg-secondary);
-  --sidebar-border: var(--color-border);
+  --sidebar-bg: #131314;        /* Near-black sidebar like t3.chat */
+  --sidebar-border: #27242c;
   
   /* Spacing */
   --spacing-xs: 0.25rem;
@@ -57,17 +53,24 @@
   --spacing-lg: 1.5rem;
   --spacing-xl: 2rem;
   
-  /* Border radius */
-  --radius-sm: 0.25rem;
-  --radius-md: 0.5rem;
-  --radius-lg: 0.75rem;
-  --radius-xl: 1rem;
+  /* Border radius — t3.chat uses generous rounding */
+  --radius-sm: 0.375rem;    /* 6px */
+  --radius-md: 0.5rem;     /* 8px */
+  --radius-lg: 0.75rem;    /* 12px */
+  --radius-xl: 1rem;       /* 16px */
+  --radius-2xl: 1.25rem;   /* 20px — input container top like t3.chat */
   --radius-full: 9999px;
   
   /* Transitions */
   --transition-fast: 150ms ease;
   --transition-normal: 250ms ease;
   --transition-slow: 350ms ease;
+  
+  /* Input container — t3.chat style */
+  --input-bg: rgba(51, 46, 56, 0.4);
+  --input-bg-focus: rgba(51, 46, 56, 0.6);
+  --input-border: rgba(51, 46, 56, 0.4);
+  --input-radius: 20px 20px 0 0;
 }
 
 /* Base styles */
@@ -87,7 +90,7 @@ html {
 body {
   height: 100%;
   margin: 0;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans', Ubuntu, Cantarell, 'Helvetica Neue', sans-serif;
   background-color: var(--color-bg-primary);
   color: var(--color-text-primary);
   line-height: 1.5;
@@ -154,11 +157,11 @@ body {
   box-shadow: 0 0 20px rgba(245, 158, 11, 0.3);
 }
 
-/* Glass effect */
+/* Glass effect — t3.chat uses warm purple-tone glass */
 .glass {
-  background: rgba(30, 41, 59, 0.8);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(31, 26, 36, 0.85);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 /* Animation utilities */

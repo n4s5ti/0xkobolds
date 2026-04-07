@@ -103,8 +103,8 @@ export const config: Config = {
     './src/extensions/core/extension-scaffold-extension.ts',
     './src/extensions/core/diagnostics-extension.ts',
 
-    // Tool Integrations
-    './src/extensions/core/mcp-extension.ts',
+    // Tool Integrations (old mcp-extension replaced by @0xkobold/pi-mcp package)
+    // './src/extensions/core/mcp-extension.ts',
     './node_modules/@aliou/pi-processes/src/index.ts',
     './src/extensions/core/websearch-enhanced-extension.ts',
     './src/extensions/core/wallet-extension.ts',
@@ -123,6 +123,7 @@ export const config: Config = {
     ext('@0xkobold/pi-ollama'),
     ext('@0xkobold/pi-orchestration'),
     ext('@0xkobold/pi-bridge'),
+    ext('@0xkobold/pi-mcp'),
     ext('@0xkobold/pi-obsidian-bridge'),
     ext('@0xkobold/pi-cloudflare-browser'),
     ext('@0xkobold/pi-wallet'),

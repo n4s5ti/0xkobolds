@@ -1,6 +1,6 @@
 {
   "name": "@0xkobold/pi-orchestration",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "Agnostic subagent orchestration for pi-coding-agent. Supports single, chain, parallel, and fork execution modes with depth limiting and worktree isolation.",
   "keywords": [
     "pi-package",
@@ -36,12 +36,10 @@
     "dev": "tsc --watch",
     "test": "bun test",
     "lint": "echo 'No linter configured'",
-    "prepublishOnly": "npm run build && npm test"
+    "prepublishOnly": "rm -rf dist && tsc"
   },
   "pi": {
-    "extensions": [
-      "./dist/index.js"
-    ]
+    "extensions": ["./dist/index.js"]
   },
   "peerDependencies": {
     "@mariozechner/pi-coding-agent": ">=0.65.0",
@@ -58,7 +56,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/moikapy/0xkobolds"
+    "url": "https://github.com/0xKobold/pi-orchestration.git"
   },
   "bugs": {
     "url": "https://github.com/0xKobold/pi-orchestration/issues"

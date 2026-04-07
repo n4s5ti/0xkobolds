@@ -650,7 +650,7 @@ export default function (pi: ExtensionAPI) {
           state.running = false;
           updateStatus();
 
-          ctx.ui.notify();
+          ctx.ui.notify("Gateway stopped", "info");
           return;
         }
 
@@ -689,7 +689,7 @@ export default function (pi: ExtensionAPI) {
           }
 
           if (approvePairingCode(code)) {
-            ctx.ui.notify();
+            ctx.ui.notify("Pairing code approved", "info");
           } else {
             ctx.ui.notify(`❌ Invalid or expired pairing code`, "error");
           }
@@ -712,7 +712,7 @@ export default function (pi: ExtensionAPI) {
           }
 
           addToAllowlist(platform, userId);
-          ctx.ui.notify();
+          ctx.ui.notify(`Added ${userId} to allowlist`, "info");
           return;
         }
 
@@ -782,7 +782,7 @@ export default function (pi: ExtensionAPI) {
     label: "Gateway Status",
     description: "Check Hermes-style gateway status",
     parameters: Type.Object({}),
-    async execute() {
+    async execute(_toolCallId, _params, _signal, _onUpdate, _ctx) {
       return {
         content: [{
           type: "text",
@@ -792,6 +792,7 @@ export default function (pi: ExtensionAPI) {
                 `Sessions: ${state.sessions.size}\n` +
                 `Agent: ${rpcProcess ? "Connected" : "Disconnected"}`
         }],
+        details: { running: state.running, adapters: state.adapters.size, clients: state.clients.size, sessions: state.sessions.size },
       };
     },
   });
@@ -801,7 +802,7 @@ export default function (pi: ExtensionAPI) {
     label: "Gateway Sessions",
     description: "List active gateway sessions",
     parameters: Type.Object({}),
-    async execute() {
+    async execute(_toolCallId, _params, _signal, _onUpdate, _ctx) {
       const sessions = listSessions();
       return {
         content: [{
@@ -814,6 +815,7 @@ export default function (pi: ExtensionAPI) {
                   lastActivity: new Date(s.lastActivity).toISOString(),
                 })), null, 2)
         }],
+        details: { count: sessions.length },
       };
     },
   });
@@ -825,8 +827,8 @@ export default function (pi: ExtensionAPI) {
     parameters: Type.Object({
       status: Type.Optional(Type.String()),
     }),
-    async execute({ status }) {
-      const tasks = listTasks(status as any);
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+      const tasks = listTasks(params.status as any);
       return {
         content: [{
           type: "text",
@@ -838,6 +840,7 @@ export default function (pi: ExtensionAPI) {
                   command: t.command.slice(0, 50),
                 })), null, 2)
         }],
+        details: { count: tasks.length },
       };
     },
   });
@@ -852,11 +855,12 @@ export default function (pi: ExtensionAPI) {
       userId: Type.Optional(Type.String()),
       code: Type.Optional(Type.String()),
     }),
-    async execute({ action, platform, userId, code }) {
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+      const { action, platform, userId, code } = params;
       switch (action) {
         case "generate": {
           if (!platform || !userId) {
-            return { content: [{ type: "text", text: "platform and userId required" }] };
+            return { content: [{ type: "text", text: "platform and userId required" }], details: { error: true } };
           }
           const pairingCode = generatePairingCode(platform as Platform, userId);
           return {
@@ -864,15 +868,17 @@ export default function (pi: ExtensionAPI) {
               type: "text",
               text: `Pairing code: ${pairingCode}\n\nShare this code with the user to approve access.`
             }],
+            details: { code: pairingCode },
           };
         }
         case "approve": {
           if (!code) {
-            return { content: [{ type: "text", text: "code required" }] };
+            return { content: [{ type: "text", text: "code required" }], details: { error: true } };
           }
           const success = approvePairingCode(code);
           return {
             content: [{ type: "text", text: success ? "✅ Code approved" : "❌ Invalid/expired" }],
+            details: { success },
           };
         }
         case "list": {
@@ -883,6 +889,7 @@ export default function (pi: ExtensionAPI) {
               text: `Pending codes: ${pending.length}\n` +
                     JSON.stringify(pending, null, 2)
             }],
+            details: { count: pending.length },
           };
         }
       }

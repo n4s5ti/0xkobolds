@@ -39,7 +39,7 @@
 - ✅ `generative-agents-extension.ts` - Memory/reflection/planning (31KB)
 - ✅ `git-commit-extension.ts` - Git integration
 - ✅ `heartbeat-extension.ts` - Session tracking
-- ✅ `mcp-extension.ts` - Model Context Protocol
+- ✅ `mcp` → `@0xkobold/pi-mcp` package (Model Context Protocol, SDK-based)
 - ✅ `memory-bootstrap-extension.ts` - Memory initialization
 - ✅ `multi-channel-extension.ts` - Multi-channel support
 - ✅ `ollama-extension.ts` - Ollama LLM provider

@@ -6,7 +6,7 @@
  */
 
 import { LitElement, html, css } from "lit";
-import { customElement, state } from "@mariozechner/mini-lit";
+import { customElement, state } from "../utils/safe-custom-element";
 import type { SerializableSkill } from "../../shared/api-types";
 
 @customElement("skill-panel")
@@ -187,18 +187,26 @@ export class SkillPanel extends LitElement {
   `;
 
   @state()
-  private skills: SerializableSkill[] = [];
+  private declare skills: SerializableSkill[];
 
   @state()
-  private filter = '';
+  private declare filter: string;
 
   @state()
-  private activeTab: 'all' | 'safe' | 'medium' | 'high' = 'all';
+  private declare activeTab: 'all' | 'safe' | 'medium' | 'high';
 
   @state()
-  private isLoading = true;
+  private declare isLoading: boolean;
 
   private unsubscribe?: () => void;
+
+  constructor() {
+    super();
+    this.skills = [];
+    this.filter = '';
+    this.activeTab = 'all';
+    this.isLoading = true;
+  }
 
   connectedCallback() {
     super.connectedCallback();

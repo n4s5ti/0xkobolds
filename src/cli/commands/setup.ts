@@ -41,7 +41,6 @@ const DEFAULT_CONFIG = {
     channelId: ""
   },
   extensions: [
-    "core/mcp-extension",
     "core/websearch-extension",
     "core/heartbeat-extension",
     "core/discord-bridge-extension"

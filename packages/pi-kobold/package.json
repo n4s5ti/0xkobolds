@@ -1,7 +1,9 @@
 {
   "name": "@0xkobold/pi-kobold",
-  "version": "0.2.0",
-  "description": "Meta-extension for 0xKobold that bundles pi-orchestration, pi-gateway, and development tools",
+  "version": "0.4.0",
+  "description": "Meta-extension for 0xKobold that bundles pi-orchestration, pi-gateway, pi-ollama, pi-learn, and development tools",
+  "author": "0xKobold",
+  "license": "MIT",
   "keywords": [
     "pi-package",
     "pi-extension",
@@ -10,8 +12,6 @@
     "gateway",
     "messaging"
   ],
-  "author": "0xKobold",
-  "license": "MIT",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -19,23 +19,18 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
-    },
-    "./gateway": {
-      "import": "./dist/tools/gateway-tools.js",
-      "types": "./dist/tools/gateway-tools.d.ts"
     }
   },
   "files": [
     "dist/",
     "src/",
-    "README.md",
-    "templates/"
+    "README.md"
   ],
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
     "test": "bun test",
-    "prepublishOnly": "npm run build && npm test"
+    "prepublishOnly": "rm -rf dist && tsc"
   },
   "pi": {
     "extensions": [
@@ -44,11 +39,17 @@
   },
   "peerDependencies": {
     "@mariozechner/pi-coding-agent": ">=0.65.0",
-    "@sinclair/typebox": ">=0.32.0"
+    "@sinclair/typebox": ">=0.32.0",
+    "@0xkobold/pi-orchestration": "^0.3.0",
+    "@0xkobold/pi-gateway": "^0.4.0",
+    "@0xkobold/pi-ollama": "^0.4.0",
+    "@0xkobold/pi-learn": "^0.3.0"
   },
   "dependencies": {
-    "@0xkobold/pi-orchestration": "../pi-orchestration",
-    "@0xkobold/pi-gateway": "../pi-gateway"
+    "@0xkobold/pi-orchestration": "^0.3.0",
+    "@0xkobold/pi-gateway": "^0.4.0",
+    "@0xkobold/pi-ollama": "^0.4.0",
+    "@0xkobold/pi-learn": "^0.3.0"
   },
   "devDependencies": {
     "@types/bun": "latest",
@@ -57,6 +58,6 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/0xKobold/pi-kobold"
+    "url": "https://github.com/0xKobold/pi-kobold.git"
   }
 }

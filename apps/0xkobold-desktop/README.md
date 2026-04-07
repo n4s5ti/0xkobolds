@@ -234,6 +234,54 @@ The desktop app is a **distribution** of 0xKobold, meaning:
 
 The key difference is the **UI layer** - Electron/Web instead of Terminal.
 
+## Verification
+
+Inspired by [agent-browser](https://github.com/vercel-labs/agent-browser) testing patterns, verify each layer:
+
+### Layer 1: Build Integrity
+```bash
+bun run typecheck     # No TS errors
+bun run build         # All targets compile
+ls dist/main/index.js dist/preload/index.mjs  # Files exist
+```
+
+### Layer 2: Dev Server
+```bash
+bun run dev &
+sleep 5
+curl -s http://localhost:5173/ | head -1  # Should return HTML
+```
+
+### Layer 3: Electron Main Process
+Check logs for:
+- `PIBridge` initialized successfully
+- Gateway started on `ws://127.0.0.1:18789`
+- Window created
+
+### Layer 4: Renderer Components
+Open DevTools (auto-opens in dev) → Console:
+```javascript
+// Should return defined
+window.koboldAPI          // Preload exposed
+window.versions.electron  // Electron version
+customElements.get('kobold-app')  // Lit component registered
+```
+
+### Layer 5: End-to-End (with agent-browser)
+```bash
+# Install agent-browser CLI
+npm install -g agent-browser
+
+# Start app
+bun run dev &
+
+# Screenshot the window
+agent-browser --auto-connect screenshot --annotate
+
+# Verify UI elements
+agent-browser --auto-connect snapshot -i
+```
+
 ## Troubleshooting
 
 ### App won't start

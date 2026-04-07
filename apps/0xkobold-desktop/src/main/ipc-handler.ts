@@ -8,7 +8,7 @@
 import { ipcMain } from 'electron';
 import { piBridge } from './pi-bridge';
 import { IPC_CHANNELS } from '../shared/ipc-channels';
-import type { IpcResponse, DesktopSettings, GatewayStatus } from '../shared/api-types';
+import type { IpcResponse, DesktopSettings, GatewayStatus, SessionMetadata } from '../shared/api-types';
 import { DEFAULT_SETTINGS } from '../shared/api-types';
 import log from 'electron-log';
 
@@ -22,6 +22,23 @@ import {
 } from './gateway-manager';
 
 let settings: DesktopSettings = { ...DEFAULT_SETTINGS };
+
+// Simple in-memory session store
+import type { SessionMetadata } from '../shared/api-types';
+
+const sessions = new Map<string, { meta: SessionMetadata; messages: any[] }>();
+
+function initDefaultSession(): void {
+  if (sessions.size === 0) {
+    const id = 'session-default';
+    const now = new Date().toISOString();
+    sessions.set(id, {
+      meta: { id, title: 'New Chat', createdAt: now, updatedAt: now, messageCount: 0, hasContext: false },
+      messages: [],
+    });
+  }
+}
+initDefaultSession();
 
 export function registerIPCHandlers(): void {
   log.info('[IPC] Registering PI-integrated handlers');
@@ -206,6 +223,77 @@ export function registerIPCHandlers(): void {
       log.info('[IPC] Kill agent:', agentId);
       return { success: true };
     } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  // ===========================================================================
+  // SESSIONS CHANNELS
+  // ===========================================================================
+
+  ipcMain.handle(IPC_CHANNELS.SESSIONS.LIST, async (): Promise<IpcResponse<SessionMetadata[]>> => {
+    try {
+      const list = Array.from(sessions.values()).map(s => s.meta);
+      // Sort by updatedAt descending
+      list.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+      return { success: true, data: list };
+    } catch (err: any) {
+      log.error('[IPC] Sessions list error:', err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.SESSIONS.LOAD, async (_event, id: string): Promise<IpcResponse<any[]>> => {
+    try {
+      const session = sessions.get(id);
+      if (!session) return { success: false, error: `Session ${id} not found` };
+      return { success: true, data: session.messages };
+    } catch (err: any) {
+      log.error('[IPC] Session load error:', err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.SESSIONS.SAVE, async (_event, id: string, messages: any[]): Promise<IpcResponse<string>> => {
+    try {
+      const existing = sessions.get(id);
+      const now = new Date().toISOString();
+      if (existing) {
+        existing.messages = messages;
+        existing.meta.updatedAt = now;
+        existing.meta.messageCount = messages.length;
+      } else {
+        sessions.set(id, {
+          meta: { id, title: `Chat ${sessions.size + 1}`, createdAt: now, updatedAt: now, messageCount: messages.length, hasContext: false },
+          messages,
+        });
+      }
+      return { success: true, data: id };
+    } catch (err: any) {
+      log.error('[IPC] Session save error:', err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.SESSIONS.DELETE, async (_event, id: string): Promise<IpcResponse<void>> => {
+    try {
+      sessions.delete(id);
+      return { success: true };
+    } catch (err: any) {
+      log.error('[IPC] Session delete error:', err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.SESSIONS.EXPORT, async (_event, id: string, format: string): Promise<IpcResponse<void>> => {
+    try {
+      const session = sessions.get(id);
+      if (!session) return { success: false, error: `Session ${id} not found` };
+      // TODO: Implement export to file via dialog
+      log.info('[IPC] Session export:', id, format);
+      return { success: true };
+    } catch (err: any) {
+      log.error('[IPC] Session export error:', err);
       return { success: false, error: err.message };
     }
   });

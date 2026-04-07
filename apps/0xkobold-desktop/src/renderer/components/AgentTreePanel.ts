@@ -6,7 +6,7 @@
  */
 
 import { LitElement, html, css } from "lit";
-import { customElement, state } from "@mariozechner/mini-lit";
+import { customElement, state } from "../utils/safe-custom-element";
 import type { SerializableAgentNode } from "../../shared/api-types";
 
 @customElement("agent-tree-panel")
@@ -175,12 +175,18 @@ export class AgentTreePanel extends LitElement {
   `;
 
   @state()
-  private tree: SerializableAgentNode[] = [];
+  private declare tree: SerializableAgentNode[];
 
   @state()
-  private expandedNodes = new Set<string>();
+  private declare expandedNodes: Set<string>;
 
   private unsubscribe?: () => void;
+
+  constructor() {
+    super();
+    this.tree = [];
+    this.expandedNodes = new Set();
+  }
 
   connectedCallback() {
     super.connectedCallback();

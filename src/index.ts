@@ -262,8 +262,8 @@ function verifyExtensions(): string[] {
     '--extension', ext('draconic-safety-extension'),
     // '--extension', ext('tui-integration-extension'),  // DISABLED: Using pi-subagents native tree
 
-    // Integrations
-    '--extension', ext('mcp-extension'),
+    // Integrations (mcp now via @0xkobold/pi-mcp package)
+    // '--extension', ext('mcp-extension'),
     '--extension', ext('gateway-extension'),
     '--extension', ext('gateway-status-extension'),
     '--extension', ext('websearch-enhanced-extension'),

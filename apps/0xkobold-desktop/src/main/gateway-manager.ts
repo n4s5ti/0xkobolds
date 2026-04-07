@@ -10,6 +10,7 @@ import { BrowserWindow } from 'electron';
 import { IPC_CHANNELS } from '../shared/ipc-channels';
 import type { GatewayStatus } from '../shared/api-types';
 import log from 'electron-log';
+import * as net from 'node:net';
 
 // ============================================================================
 // Gateway Types
@@ -32,6 +33,71 @@ export interface GatewayConnection {
   host?: string;
   externalUrl?: string;
   error?: string;
+}
+
+// ============================================================================
+// Utility: Check if gateway already running
+// ============================================================================
+
+/**
+ * Check if a gateway is already running on the given port
+ * Returns true if port is in use by another process
+ */
+async function isPortInUse(port: number, host: string = '127.0.0.1'): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = new net.Socket();
+    
+    socket.setTimeout(1000);
+    
+    socket.once('connect', () => {
+      socket.destroy();
+      resolve(true);
+    });
+    
+    socket.once('error', (err: any) => {
+      socket.destroy();
+      if (err.code === 'ECONNREFUSED') {
+        resolve(false);
+      } else {
+        // Other errors (like EACCES) likely mean something is using the port
+        resolve(true);
+      }
+    });
+    
+    socket.once('timeout', () => {
+      socket.destroy();
+      resolve(false);
+    });
+    
+    socket.connect(port, host);
+  });
+}
+
+/**
+ * Test if existing port is a 0xKobold gateway by making HTTP request
+ */
+async function probeGateway(port: number, host: string = '127.0.0.1'): Promise<{ running: boolean; isOurs: boolean }> {
+  return new Promise((resolve) => {
+    const http = require('http');
+    const req = http.get(`http://${host}:${port}/`, { timeout: 1000 }, (res: any) => {
+      let data = '';
+      res.on('data', (chunk: any) => data += chunk);
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          resolve({ 
+            running: true, 
+            isOurs: json.type === 'gateway-info' || json.version?.includes('Kobold')
+          });
+        } catch {
+          resolve({ running: true, isOurs: false });
+        }
+      });
+    });
+    
+    req.on('error', () => resolve({ running: false, isOurs: false }));
+    req.on('timeout', () => { req.destroy(); resolve({ running: false, isOurs: false }); });
+  });
 }
 
 // ============================================================================
@@ -162,8 +228,54 @@ function handleEmbeddedMessage(msg: any, ws: import('ws').WebSocket): void {
 // ============================================================================
 // Connect Mode (WebSocket client to external gateway)
 // ============================================================================
+// Embedded Gateway (HTTP + WebSocket server in main process)
+// ============================================================================
 
-let clientWs: WebSocket | null = null;
+type AnyWebSocket = import('ws').WebSocket;
+
+let clientWs: AnyWebSocket | null = null;
+export async function initializeGateway(
+  preferredMode: 'auto' | 'embedded' | 'connect' = 'auto',
+  port: number = 18789,
+  host: string = '127.0.0.1',
+  externalUrl?: string
+): Promise<void> {
+  log.info(`[Gateway] Initializing (mode: ${preferredMode})`);
+
+  // If already connected, nothing to do
+  if (connection.status === 'connected') {
+    log.info('[Gateway] Already connected');
+    return;
+  }
+
+  // Auto mode: probe for existing gateway first
+  if (preferredMode === 'auto' || preferredMode === 'embedded') {
+    const existing = await isPortInUse(port, host);
+    
+    if (existing) {
+      log.info(`[Gateway] Port ${port} is in use, probing...`);
+      const probe = await probeGateway(port, host);
+      
+      if (probe.running && probe.isOurs) {
+        log.info('[Gateway] Found existing 0xKobold gateway, connecting as client');
+        await connectToGateway(`ws://${host}:${port}`);
+        return;
+      } else if (probe.running) {
+        log.warn(`[Gateway] Port ${port} in use by other process, will try embedded mode`);
+        // We'll still try to start, it will fail with EADDRINUSE
+      }
+    }
+  }
+
+  // Connect mode: connect to external gateway
+  if (preferredMode === 'connect' && externalUrl) {
+    await connectToGateway(externalUrl);
+    return;
+  }
+
+  // Start embedded gateway
+  await startEmbeddedGateway(port, host);
+}
 
 /**
  * Connect to an external gateway

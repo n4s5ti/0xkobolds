@@ -18,6 +18,7 @@ import { registerIPCHandlers } from './ipc-handler';
 
 // Import gateway manager
 import { startEmbeddedGateway } from './gateway-manager';
+import { initializeGateway } from './gateway-manager';
 
 // Configure logging
 log.initialize();
@@ -58,7 +59,7 @@ function createMainWindow(): BrowserWindow {
     
     // Web preferences - security focused
     webPreferences: {
-      preload: resolve(__dirname, '../preload/index.js'),
+      preload: resolve(__dirname, '../preload/index.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
@@ -72,9 +73,12 @@ function createMainWindow(): BrowserWindow {
   });
 
   // Load the renderer
-  if (process.env.VITE_DEV_SERVER_URL) {
-    // Development mode - use Vite dev server
-    mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
+  const isDev = !!process.env.VITE_DEV_SERVER_URL || app.isPackaged === false;
+  const devServerUrl = process.env.VITE_DEV_SERVER_URL || 'http://localhost:5173';
+  
+  if (isDev) {
+    log.info('[Main] Loading renderer from dev server:', devServerUrl);
+    mainWindow.loadURL(devServerUrl);
     mainWindow.webContents.openDevTools();
   } else {
     // Production mode - load built files
@@ -190,14 +194,14 @@ app.whenReady().then(async () => {
     createTray();
   }
   
-  // Auto-start embedded gateway if configured
+  // Auto-start embedded gateway if configured (smart connect to existing if available)
   if (APP_SETTINGS.gatewayAutoStart) {
-    log.info('[Main] Auto-starting embedded gateway on port', APP_SETTINGS.gatewayPort);
+    log.info('[Main] Auto-starting gateway on port', APP_SETTINGS.gatewayPort);
     try {
-      await startEmbeddedGateway(APP_SETTINGS.gatewayPort, '127.0.0.1');
-      log.info('[Main] Embedded gateway started');
+      await initializeGateway('auto', APP_SETTINGS.gatewayPort, '127.0.0.1');
+      log.info('[Main] Gateway initialized (embedded or connected)');
     } catch (err) {
-      log.warn('[Main] Failed to auto-start gateway:', err);
+      log.warn('[Main] Failed to initialize gateway:', err);
     }
   }
 

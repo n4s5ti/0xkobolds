@@ -1,6 +1,6 @@
 {
   "name": "@0xkobold/pi-learn",
-  "version": "0.2.3",
+  "version": "0.3.0",
   "description": "Open-source memory infrastructure for pi agents - inspired by Honcho. Provides peer representations, reasoning, and context assembly for stateful AI agents.",
   "keywords": [
     "pi-package",
@@ -26,6 +26,18 @@
     "./renderers": {
       "import": "./dist/renderers.js",
       "types": "./dist/renderers.d.ts"
+    },
+    "./core/store": {
+      "import": "./dist/core/store.js",
+      "types": "./dist/core/store.d.ts"
+    },
+    "./core/reasoning": {
+      "import": "./dist/core/reasoning.js",
+      "types": "./dist/core/reasoning.d.ts"
+    },
+    "./core/context": {
+      "import": "./dist/core/context.js",
+      "types": "./dist/core/context.d.ts"
     }
   },
   "files": [
@@ -44,10 +56,7 @@
     "prepublishOnly": "npm run build"
   },
   "pi": {
-    "extensions": [
-      "./dist/index.mjs"
-    ],
-    "image": "https://ollama.com/public/ollama.png"
+    "extensions": ["./dist/index.js"]
   },
   "peerDependencies": {
     "@mariozechner/pi-coding-agent": ">=0.62.0",
@@ -73,7 +82,7 @@
     "@types/node": "^25.5.0",
     "@types/sql.js": "^1.4.11",
     "bun-types": "^1.3.11",
-    "esbuild": "^0.24.2",
+    "esbuild": "^0.28.0",
     "typescript": "^5.9.3",
     "vitest": "^4.1.1"
   },

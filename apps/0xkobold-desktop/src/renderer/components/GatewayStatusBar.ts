@@ -8,7 +8,7 @@
  */
 
 import { LitElement, html, css } from "lit";
-import { customElement, state } from "@mariozechner/mini-lit";
+import { customElement, state } from "../utils/safe-custom-element";
 import type { GatewayStatus, GatewayMode } from "../../shared/api-types";
 
 @customElement("gateway-status-bar")
@@ -17,26 +17,9 @@ export class GatewayStatusBar extends LitElement {
     :host {
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      padding: 0 var(--spacing-md);
-      height: 100%;
-      font-size: 0.75rem;
+      gap: var(--spacing-sm);
+      font-size: 0.6875rem;
       color: var(--color-text-muted);
-    }
-
-    .section {
-      display: flex;
-      align-items: center;
-      gap: var(--spacing-md);
-    }
-
-    .section-left {
-      flex: 1;
-    }
-
-    .section-right {
-      flex: 1;
-      justify-content: flex-end;
     }
 
     .status-item {
@@ -75,11 +58,11 @@ export class GatewayStatusBar extends LitElement {
     }
 
     .status-label {
-      color: var(--color-text-secondary);
+      color: var(--color-text-muted);
     }
 
     .status-value {
-      color: var(--color-text-primary);
+      color: var(--color-text-secondary);
       font-weight: 500;
     }
 
@@ -112,18 +95,19 @@ export class GatewayStatusBar extends LitElement {
     .action-btn {
       background: transparent;
       border: 1px solid var(--color-border);
-      color: var(--color-text-secondary);
+      color: var(--color-text-muted);
       cursor: pointer;
-      padding: 4px 12px;
-      border-radius: var(--radius-md);
-      font-size: 0.75rem;
+      padding: 2px 8px;
+      border-radius: var(--radius-sm);
+      font-size: 0.6875rem;
       transition: all var(--transition-fast);
+      font-family: inherit;
     }
 
     .action-btn:hover {
       background: var(--color-bg-tertiary);
-      color: var(--color-text-primary);
-      border-color: var(--color-accent);
+      color: var(--color-text-secondary);
+      border-color: var(--color-border-hover);
     }
 
     .action-btn.active {
@@ -133,20 +117,27 @@ export class GatewayStatusBar extends LitElement {
     }
 
     .url-display {
-      font-family: monospace;
+      font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
       font-size: 0.625rem;
       color: var(--color-text-muted);
     }
   `;
 
   @state()
-  private status: GatewayStatus | null = null;
+  private declare status: GatewayStatus | null;
 
   @state()
-  private showConnectDialog = false;
+  private declare showConnectDialog: boolean;
 
   @state()
-  private connectUrl = '';
+  private declare connectUrl: string;
+
+  constructor() {
+    super();
+    this.status = null;
+    this.showConnectDialog = false;
+    this.connectUrl = '';
+  }
 
   connectedCallback() {
     super.connectedCallback();
@@ -216,39 +207,31 @@ export class GatewayStatusBar extends LitElement {
 
   render() {
     return html`
-      <div class="section section-left">
-        <div class="status-item">
-          <div class="status-indicator ${this.getStatusClass()}"></div>
-          <span class="status-label">Gateway:</span>
-          <span class="status-value">${this.getModeLabel()}</span>
+      <div class="status-item">
+        <div class="status-indicator ${this.getStatusClass()}"></div>
+        <span class="status-label">Gateway:</span>
+        <span class="status-value">${this.getModeLabel()}</span>
+      </div>
+      
+      ${this.status?.running ? html`
+        <div class="mode-badge ${this.getModeBadgeClass()}">
+          ${this.status.url}
         </div>
-        
-        ${this.status?.running ? html`
-          <div class="mode-badge ${this.getModeBadgeClass()}">
-            ${this.status.url}
-          </div>
-        ` : ''}
-      </div>
+      ` : ''}
 
-      <div class="section section-right">
-        ${!this.status?.running ? html`
-          <button class="action-btn" @click=${this.startEmbedded} title="Start local gateway">
-            ▶️ Start
-          </button>
-          <button class="action-btn" @click=${() => this.showConnectDialog = true} title="Connect to external gateway">
-            🔗 Connect
-          </button>
-        ` : html`
-          ${this.status?.mode === 'embedded' ? html`
-            <span class="url-display">ws://${this.status?.host}:${this.status?.port}</span>
-          ` : html`
-            <span class="url-display">${this.status?.url}</span>
-          `}
-          <button class="action-btn" @click=${this.disconnect} title="Disconnect">
-            ⏹️ Stop
-          </button>
-        `}
-      </div>
+      ${!this.status?.running ? html`
+        <button class="action-btn" @click=${this.startEmbedded} title="Start local gateway">
+          ▶ Start
+        </button>
+        <button class="action-btn" @click=${() => this.showConnectDialog = true} title="Connect to external gateway">
+          🔗 Connect
+        </button>
+      ` : html`
+        <span class="url-display">ws://${this.status?.host}:${this.status?.port}</span>
+        <button class="action-btn" @click=${this.disconnect} title="Disconnect">
+          ⏹ Stop
+        </button>
+      `}
     `;
   }
 }

@@ -15,6 +15,7 @@
 
 import { defineTool } from "@mariozechner/pi-coding-agent";
 import type { 
+  ExtensionAPI,
   ExtensionContext, 
   ToolDefinition,
   AgentToolResult 
@@ -337,7 +338,7 @@ const statusTool = defineTool({
  * pi-orchestration extension factory
  * Registers orchestrate, register_agent, and orchestrate_status tools
  */
-export default function piOrchestrationExtension(pi: any): void {
+export default async function piOrchestrationExtension(pi: ExtensionAPI): Promise<void> {
   // Register orchestrate tool
   pi.registerTool(orchestrateTool);
   

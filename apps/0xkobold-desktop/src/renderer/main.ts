@@ -11,8 +11,10 @@ import "./styles/app.css";
 // Import the main app component
 import { KoboldApp } from "./app";
 
-// Register custom elements
-customElements.define("kobold-app", KoboldApp);
+// Register custom elements (guard against hot-reload)
+if (!customElements.get("kobold-app")) {
+  customElements.define("kobold-app", KoboldApp);
+}
 
 // Mount the app
 declare global {

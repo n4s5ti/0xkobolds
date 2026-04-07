@@ -1,15 +1,16 @@
 /**
- * StatusBar Component
+ * StatusBar Component — t3.chat inspired
  * 
- * Bottom status bar showing:
- * - Gateway connection status
- * - Current model
- * - Token count usage
- * - Session status
+ * Minimal bottom bar:
+ * - Gateway connection status (left)
+ * - Token usage indicator (center)
+ * - Model name (right)
+ * 
+ * Uses the warm purple-gray muted palette.
  */
 
 import { LitElement, html, css } from "lit";
-import { customElement, state } from "@mariozechner/mini-lit";
+import { customElement, state } from "../utils/safe-custom-element";
 
 @customElement("kobold-status-bar")
 export class StatusBar extends LitElement {
@@ -20,7 +21,7 @@ export class StatusBar extends LitElement {
       justify-content: space-between;
       padding: 0 var(--spacing-md);
       height: 100%;
-      font-size: 0.75rem;
+      font-size: 0.6875rem;
       color: var(--color-text-muted);
     }
 
@@ -51,8 +52,8 @@ export class StatusBar extends LitElement {
     }
 
     .token-progress {
-      width: 100px;
-      height: 4px;
+      width: 80px;
+      height: 3px;
       background: var(--color-bg-tertiary);
       border-radius: var(--radius-full);
       overflow: hidden;
@@ -69,31 +70,19 @@ export class StatusBar extends LitElement {
       background: var(--color-warning);
     }
 
-    .token-fill.error {
+    .token-fill.error-fill {
       background: var(--color-error);
-    }
-
-    .status-label {
-      color: var(--color-text-secondary);
-    }
-
-    .status-value {
-      color: var(--color-text-primary);
-      font-weight: 500;
     }
 
     .model-badge {
       display: flex;
       align-items: center;
-      gap: var(--spacing-xs);
-      padding: var(--spacing-xs) var(--spacing-sm);
+      gap: 4px;
+      padding: 2px 8px;
       background: var(--color-bg-tertiary);
       border-radius: var(--radius-full);
-      font-weight: 500;
-    }
-
-    .model-icon {
-      font-size: 0.75rem;
+      font-weight: 450;
+      color: var(--color-text-secondary);
     }
 
     .action-btn {
@@ -101,32 +90,39 @@ export class StatusBar extends LitElement {
       border: none;
       color: var(--color-text-muted);
       cursor: pointer;
-      padding: var(--spacing-xs);
+      padding: 2px;
       border-radius: var(--radius-sm);
-      transition: all var(--transition-fast);
+      transition: color var(--transition-fast);
+      font-size: 0.75rem;
     }
 
     .action-btn:hover {
       color: var(--color-text-primary);
-      background: var(--color-bg-tertiary);
     }
   `;
 
   @state()
-  private tokenCount = 0;
+  private declare tokenCount: number;
 
   @state()
-  private maxTokens = 128000;
+  private declare maxTokens: number;
 
   @state()
-  private currentModel = 'ollama/llama3.2';
+  private declare currentModel: string;
+
+  constructor() {
+    super();
+    this.tokenCount = 0;
+    this.maxTokens = 128000;
+    this.currentModel = 'ollama/glm-5.1:cloud';
+  }
 
   private get tokenPercentage(): number {
     return Math.min((this.tokenCount / this.maxTokens) * 100, 100);
   }
 
   private get tokenFillClass(): string {
-    if (this.tokenPercentage > 90) return 'error';
+    if (this.tokenPercentage > 90) return 'error-fill';
     if (this.tokenPercentage > 70) return 'warning';
     return '';
   }
@@ -138,27 +134,23 @@ export class StatusBar extends LitElement {
       </div>
 
       <div class="section section-center">
-        <div class="status-item token-bar">
-          <span class="status-label">Tokens:</span>
+        <div class="token-bar">
+          <span>${this.tokenCount.toLocaleString()}</span>
           <div class="token-progress">
-            <div 
+            <div
               class="token-fill ${this.tokenFillClass}"
               style="width: ${this.tokenPercentage}%"
             ></div>
           </div>
-          <span class="status-value">${this.tokenCount.toLocaleString()}</span>
         </div>
       </div>
 
       <div class="section section-right">
         <div class="model-badge">
-          <span class="model-icon">🧠</span>
+          <span>🧠</span>
           <span>${this.currentModel}</span>
         </div>
-        
-        <button class="action-btn" @click=${this.handleClear} title="Clear conversation">
-          🗑️
-        </button>
+        <button class="action-btn" @click=${this.handleClear} title="Clear conversation">🗑️</button>
       </div>
     `;
   }

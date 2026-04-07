@@ -61,7 +61,7 @@ export function createLLMExecutor(
 
     // Create 0xKobold chat options
     const koboldOptions = {
-      model: options.model || defaultModel || "ollama/llama3.2:3b",
+      model: options.model || defaultModel || "ollama/glm-5.1:cloud",
       messages: koboldMessages,
       temperature: options.temperature ?? defaultTemperature,
       maxTokens: options.maxTokens,
@@ -97,7 +97,7 @@ export async function createAsyncLLMExecutor(
     const koboldMessages = options.messages.map(toKoboldMessage);
 
     const koboldOptions = {
-      model: options.model || defaultModel || "ollama/llama3.2:3b",
+      model: options.model || defaultModel || "ollama/glm-5.1:cloud",
       messages: koboldMessages,
       temperature: options.temperature ?? defaultTemperature,
       maxTokens: options.maxTokens,

@@ -65,7 +65,7 @@ export class DiscordAdapter extends BaseAdapter {
 
     // Connect to Gateway
     const gatewayResponse = await this.apiRequest("/gateway");
-    const gatewayData = await gatewayResponse.json();
+    const gatewayData = (await gatewayResponse.json()) as { url: string };
     const gatewayUrl = `${gatewayData.url}?v=10&encoding=json&intents=${this.intents}`;
 
     this.wsConnection = new WebSocket(gatewayUrl);
@@ -200,7 +200,7 @@ export class DiscordAdapter extends BaseAdapter {
       throw new Error(`Failed to send message: ${error}`);
     }
 
-    const data = await response.json();
+    const data = (await response.json()) as { id: string };
     return data.id;
   }
 

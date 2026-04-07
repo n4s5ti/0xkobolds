@@ -14,8 +14,8 @@ import {
 import { IndexedDBStorageBackend } from "@mariozechner/pi-web-ui";
 
 // 0xKobold specific stores
-import { SkillStore } from "./stores/SkillStore";
-import { AgentTreeStore } from "./stores/AgentTreeStore";
+import { SkillStore } from "./SkillStore";
+import { AgentTreeStore } from "./AgentTreeStore";
 
 /**
  * KoboldStorage integrates the standard PI web-ui storage
