@@ -1,0 +1,99 @@
+# Receive package updates from standalone repos
+#
+# Triggered by repository_dispatch events from standalone pi-* package repos.
+# Opens a PR on the monorepo with the changes applied to the correct
+# packages/ subdirectory using content-based sync (git archive + extract).
+#
+# Flow:
+#   1. PR merged on 0xKobold/pi-ollama
+#   2. pi-ollama dispatches "package-updated" event to monorepo
+#   3. This workflow fetches the changes, applies them under packages/pi-ollama/
+#   4. Opens a PR like "sync(pi-ollama): pull from standalone repo"
+
+name: Receive Package Sync
+
+on:
+  repository_dispatch:
+    types: [package-updated]
+
+jobs:
+  sync-package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "0xKobold Sync Bot"
+          git config user.email "sync-bot@0xkobold.dev"
+
+      - name: Sync ${{ github.event.client_payload.package }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
+        run: |
+          PKG="${{ github.event.client_payload.package }}"
+          PKG_DIR="packages/${PKG}"
+          REMOTE="https://x-access-token:${GITHUB_TOKEN}@github.com/0xKobold/${PKG}.git"
+          BRANCH="main"
+
+          echo "=== Syncing ${PKG} from standalone repo ==="
+
+          # Fetch the latest from the standalone repo
+          git remote add pkg-remote "${REMOTE}" 2>/dev/null || true
+          git fetch pkg-remote "${BRANCH}"
+
+          # Extract remote tree into local package directory (content-based sync)
+          # This avoids the "unrelated histories" problem with git subtree pull
+          git archive "pkg-remote/${BRANCH}" | tar -x -C "${PKG_DIR}"
+
+          # Check for changes
+          git add "${PKG_DIR}"
+          if git diff --cached --quiet; then
+            echo "No changes to sync for ${PKG}"
+            exit 0
+          fi
+
+          # Show diff for the PR body
+          DIFF_STAT=$(git diff --cached --stat)
+          echo "Changes:" && echo "$DIFF_STAT"
+
+          # Create a branch and commit
+          SYNC_BRANCH="sync/${PKG}-$(date +%Y%m%d-%H%M%S)"
+          git checkout -b "${SYNC_BRANCH}"
+          PR_TITLE="${{ github.event.client_payload.pr_title }}"
+          if [ -n "${PR_TITLE}" ]; then
+            COMMIT_MSG="sync(${PKG}): ${PR_TITLE}"
+          else
+            COMMIT_MSG="sync(${PKG}): pull from standalone repo"
+          fi
+          git commit -m "${COMMIT_MSG}"
+
+          # Push branch
+          git push origin "${SYNC_BRANCH}"
+
+          # Create PR
+          PR_BODY=$(cat <<EOF
+          Automated sync from [0xKobold/${PKG}](https://github.com/0xKobold/${PKG}).
+
+          ${{ github.event.client_payload.pr_number && format('Original PR: #{0}', github.event.client_payload.pr_number) || '' }}
+
+          ### Changed files
+          \`\`\`
+          ${DIFF_STAT}
+          \`\`\`
+          EOF
+          )
+
+          gh pr create \
+            --title "${COMMIT_MSG}" \
+            --body "${PR_BODY}" \
+            --base master \
+            --head "${SYNC_BRANCH}" \
+            --label "auto-sync" || true
+
+      - name: Cleanup
+        if: always()
+        run: |
+          git remote remove pkg-remote 2>/dev/null || true

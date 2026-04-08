@@ -1,0 +1,87 @@
+# Sync packages: Monorepo → Standalone repos
+#
+# When changes are pushed to packages/pi-*, automatically sync
+# the updated package to its standalone GitHub repository using
+# git subtree split + push.
+#
+# This is the "push" direction (monorepo → standalone).
+# For the "pull" direction (standalone PRs → monorepo), see
+# sync-packages-pull.yml in each standalone repo.
+
+name: Sync Packages to Standalone Repos
+
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - 'packages/pi-*/**'
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      packages: ${{ steps.filter.outputs.changes }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed packages
+        uses: dorny/paths-filter@v2
+        id: filter
+        with:
+          filters: |
+            pi-bridge: packages/pi-bridge/**
+            pi-cloudflare-browser: packages/pi-cloudflare-browser/**
+            pi-erc8004: packages/pi-erc8004/**
+            pi-gateway: packages/pi-gateway/**
+            pi-gateway-v2: packages/pi-gateway-v2/**
+            pi-kobold: packages/pi-kobold/**
+            pi-learn: packages/pi-learn/**
+            pi-mcp: packages/pi-mcp/**
+            pi-obsidian-bridge: packages/pi-obsidian-bridge/**
+            pi-ollama: packages/pi-ollama/**
+            pi-orchestration: packages/pi-orchestration/**
+            pi-suggest: packages/pi-suggest/**
+            pi-wallet: packages/pi-wallet/**
+
+  sync:
+    needs: detect-changes
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        package: ${{ fromJson(needs.detect-changes.outputs.packages) }}
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "0xKobold Sync Bot"
+          git config user.email "sync-bot@0xkobold.dev"
+
+      - name: Split and push ${{ matrix.package }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
+        run: |
+          PKG="${{ matrix.package }}"
+          PREFIX="packages/${PKG}"
+          REMOTE="https://x-access-token:${GITHUB_TOKEN}@github.com/0xKobold/${PKG}.git"
+          BRANCH="main"
+
+          echo "=== Syncing ${PKG} ==="
+
+          # Create a temporary branch from the subtree split
+          SPLIT_BRANCH="_sync_${PKG}"
+          git subtree split --prefix="${PREFIX}" -b "${SPLIT_BRANCH}"
+
+          # Force push to the standalone repo
+          # (force is needed because subtree split creates independent history)
+          git push --force "${REMOTE}" "${SPLIT_BRANCH}:${BRANCH}"
+
+          # Cleanup temp branch
+          git branch -D "${SPLIT_BRANCH}"
+
+          echo "✅ ${PKG} synced to 0xKobold/${PKG}"

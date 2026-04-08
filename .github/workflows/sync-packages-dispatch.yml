@@ -1,0 +1,39 @@
+# Sync from standalone repo → Monorepo
+#
+# When a PR is merged on a standalone pi-* package repo, this workflow
+# dispatches an event to the monorepo, which then opens a PR to apply
+# the changes under the correct packages/ subdirectory.
+#
+# This workflow lives in EACH standalone package repo (e.g. 0xKobold/pi-ollama).
+# The corresponding receiver workflow lives in the monorepo
+# (0xKobold/0xkobolds/.github/workflows/sync-packages-receive.yml).
+
+name: Notify Monorepo of Changes
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [closed]
+
+jobs:
+  notify:
+    # Only trigger on push to main (merged PRs) or direct pushes
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch to monorepo
+        uses: peter-evans/repository-dispatch@v2
+        with:
+          token: ${{ secrets.MONOREPO_DISPATCH_TOKEN }}
+          repository: 0xKobold/0xkobolds
+          event-type: package-updated
+          client-payload: |
+            {
+              "package": "${{ github.event.repository.name }}",
+              "ref": "${{ github.ref }}",
+              "sha": "${{ github.sha }}",
+              "sender": "${{ github.actor }}",
+              "pr_number": ${{ github.event.pull_request.number || 'null' }},
+              "pr_title": "${{ github.event.pull_request.title || '' }}"
+            }
