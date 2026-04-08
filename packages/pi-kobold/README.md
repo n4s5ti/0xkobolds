@@ -16,8 +16,9 @@ pi install npm:@0xkobold/pi-kobold
 | [pi-gateway](https://github.com/0xKobold/pi-gateway) | Hermes-style multi-platform messaging gateway |
 | [pi-ollama](https://github.com/0xKobold/pi-ollama) | Unified Ollama provider (local + cloud) |
 | [pi-learn](https://github.com/0xKobold/pi-learn) | Persistent memory and reasoning |
+| [pi-mcp](https://github.com/0xKobold/pi-mcp) | Model Context Protocol integration (stdio, SSE, WebSocket) |
 
-Installing `pi-kobold` activates all four. You can also install them individually:
+Installing `pi-kobold` activates all five. You can also install them individually:
 
 ```bash
 # Pick and mix — no conflicts
@@ -28,6 +29,8 @@ Duplicate registration is guarded — if a sub-extension was already loaded, pi-
 
 ## Tools
 
+### Core Tools
+
 | Tool | Description |
 |------|-------------|
 | `kobold_initialize` | Initialize pi-kobold with LLM configuration |
@@ -35,18 +38,37 @@ Duplicate registration is guarded — if a sub-extension was already loaded, pi-
 | `kobold_create_extension` | Generate boilerplate for a new extension |
 | `kobold_status` | Show status of all sub-extensions |
 
+### Git Package Sync Tools
+
+Manage bidirectional sync between the monorepo and individual GitHub repos, plus issues and PRs.
+
+| Tool | Description |
+|------|-------------|
+| `git_package_status` | Show sync status of all pi-packages (drift, missing repos, unconfigured remotes) |
+| `git_package_push` | Push a package subtree to its individual GitHub repo |
+| `git_package_pull` | Pull changes from an individual repo into the monorepo |
+| `git_package_init` | Create a GitHub repo for a package and push initial content |
+| `git_issue` | List or create GitHub issues on a package repo |
+| `git_pr` | List or create pull requests on a package repo |
+| `git_worktree` | Manage git worktrees for isolated package development |
+
+These tools use `git subtree` for history-preserving sync and `gh` CLI for GitHub operations. The monorepo is the source of truth — changes flow from `packages/<name>/` out to individual repos via `git_package_push`, and external contributions flow back in via `git_package_pull`.
+
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                    Pi-Kobold                        │
-├─────────────┬──────────┬──────────┬────────────────┤
-│ Orchestrate │ Gateway  │ Ollama   │ Learn         │
-│ ─────────── │ ──────── │ ──────── │ ────────────  │
-│ • Delegate  │ • Session│ • Local  │ • Observe     │
-│ • Chain     │ • Secure │ • Cloud  │ • Reason      │
-│ • Parallel  │ • BG task│ • Vision │ • Dream       │
-└─────────────┴──────────┴──────────┴────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│                         Pi-Kobold                            │
+├──────────────┬──────────┬──────────┬──────────┬─────────────┤
+│ Orchestrate  │ Gateway   │ Ollama   │ Learn    │ MCP         │
+│ ──────────── │ ────────  │ ──────── │ ─────────│ ─────────── │
+│ • Delegate   │ • Session │ • Local  │ • Observe│ • stdio     │
+│ • Chain      │ • Secure  │ • Cloud  │ • Reason │ • SSE       │
+│ • Parallel   │ • BG task │ • Vision │ • Dream  │ • WebSocket │
+├──────────────┴──────────┴──────────┴──────────┴─────────────┤
+│ Git Package Sync (7 tools)                                  │
+│ • subtree push/pull • repo init • issues • PRs • worktrees │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 ## Quick Start
@@ -63,6 +85,18 @@ pi install npm:@0xkobold/pi-kobold
 
 # Create a skill
 /kobold_create_skill name="my-skill" description="Does something useful" path=".pi/skills/"
+
+# Check package sync status
+git_package_status()
+
+# Push a package to its individual repo
+git_package_push(package="pi-gateway")
+
+# Pull external changes back
+git_package_pull(package="pi-ollama")
+
+# Create a GitHub issue
+git_issue(package="pi-mcp", title="Bug: connection timeout", labels=["bug"])
 ```
 
 ## LLM Executor
