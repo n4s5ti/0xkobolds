@@ -6,6 +6,7 @@
  * - pi-gateway (multi-platform messaging)
  * - pi-ollama (unified Ollama providers)
  * - pi-learn (persistent memory & reasoning)
+ * - pi-secret-guardian (secret detection & pi-share-hf)
  * - Dev tools (skill/extension scaffolding)
  *
  * Architecture: pi's loader does NOT auto-discover sub-extensions from
@@ -15,8 +16,9 @@
  * pulls all bundled extensions via deps and activates them.
  *
  * Standalone use: `pi install @0xkobold/pi-ollama` → works independently
- * Bundle use: `pi install @0xkobold/pi-kobold` → loads everything
+ * Bundle use: `pi install @0xkobold/pi-kobold` → loads everything (incl. secret-guardian)
  * Pick & mix: `pi install @0xkobold/pi-kobold @0xkobold/pi-learn` → no conflicts
+ * Standalone:  `pi install @0xkobold/pi-secret-guardian` → secrets only
  *   (pi-learn loads once; duplicate registration is guarded)
  */
 
@@ -39,6 +41,7 @@ import gatewayExtension from "@0xkobold/pi-gateway";
 import ollamaExtension from "@0xkobold/pi-ollama";
 import learnExtension from "@0xkobold/pi-learn";
 import mcpExtension from "@0xkobold/pi-mcp";
+import secretGuardianExtension from "@0xkobold/pi-secret-guardian";
 // TODO: Re-enable when pi-persona is published
 // import personaExtension from "@0xkobold/pi-persona";
 
@@ -366,9 +369,10 @@ export default async (pi: ExtensionAPI): Promise<void> => {
     { name: "pi-gateway",      factory: gatewayExtension,      sentinel: { type: "tool", name: "gateway_status" } },
     { name: "pi-ollama",      factory: ollamaExtension,        sentinel: { type: "command", name: "ollama" } },
     { name: "pi-learn",       factory: learnExtension,          sentinel: { type: "tool", name: "learn_add_message" } },
-    { name: "pi-mcp",         factory: mcpExtension,            sentinel: { type: "tool", name: "mcp_discover" } },
+    { name: "pi-mcp",               factory: mcpExtension,              sentinel: { type: "tool", name: "mcp_discover" } },
+    { name: "pi-secret-guardian", factory: secretGuardianExtension,   sentinel: { type: "tool", name: "secret_scan" } },
     // TODO: Re-enable when pi-persona is published
-    // { name: "pi-persona",      factory: personaExtension,         sentinel: { type: "tool", name: "persona" } },
+    // { name: "pi-persona",        factory: personaExtension,           sentinel: { type: "tool", name: "persona" } },
   ];
 
   const existingTools = new Set((pi.getAllTools() as any[]).map((t: any) => t.name));
@@ -669,5 +673,5 @@ export default async (pi: ExtensionAPI): Promise<void> => {
   // Register git package sync tools
   registerGitPackageSyncTools(pi);
 
-  console.log("[pi-kobold] Extension loaded — 11 kobold tools + 6 sub-extensions registered");
+  console.log("[pi-kobold] Extension loaded — 11 kobold tools + 7 sub-extensions registered");
 };

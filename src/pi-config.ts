@@ -80,7 +80,7 @@ export const config: Config = {
     
     // Core Features
     './src/extensions/core/memory-bootstrap-extension.ts',
-    './src/extensions/core/persona-loader-extension.ts',
+    // persona-loader-extension.ts replaced by @0xkobold/pi-persona (loaded via pi-kobold meta-extension)
     './src/extensions/core/onboarding-extension.ts',
     './src/extensions/core/task-manager-extension.ts',
     './src/extensions/core/heartbeat-extension.ts',
@@ -122,6 +122,7 @@ export const config: Config = {
     ext('@0xkobold/pi-learn'),
     ext('@0xkobold/pi-ollama'),
     ext('@0xkobold/pi-orchestration'),
+    ext('@0xkobold/pi-persona'),
     ext('@0xkobold/pi-bridge'),
     ext('@0xkobold/pi-mcp'),
     ext('@0xkobold/pi-obsidian-bridge'),

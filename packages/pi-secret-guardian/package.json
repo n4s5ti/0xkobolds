@@ -1,0 +1,50 @@
+{
+  "name": "@0xkobold/pi-secret-guardian",
+  "version": "0.1.0",
+  "description": "Secret detection and pi-share-hf integration for pi-coding-agent. Scans projects, sessions, and environment for secrets, syncs to pi-share-hf workspace, and manages the collection/upload pipeline.",
+  "author": "0xKobold",
+  "license": "MIT",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "0xkobold",
+    "secrets",
+    "security",
+    "trufflehog",
+    "pi-share-hf"
+  ],
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist/",
+    "src/",
+    "scripts/",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "bun test",
+    "prepublishOnly": "rm -rf dist && tsc",
+    "postinstall": "node scripts/check-deps.js"
+  },
+  "pi": {
+    "extensions": [
+      "./dist/index.js"
+    ]
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": ">=0.65.0",
+    "@sinclair/typebox": ">=0.32.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/0xKobold/pi-secret-guardian.git"
+  }
+}
