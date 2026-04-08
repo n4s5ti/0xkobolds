@@ -8,6 +8,20 @@
 
 import type { Conclusion, ReasoningOutput, DreamOutput, Scope } from "../shared.js";
 
+export interface ReasonedConclusion {
+  content: string;
+  type: "deductive" | "inductive" | "abductive";
+  premises: string[];
+  scope: Scope;
+  confidence: number;
+  embedding?: number[];
+  sourceSessionId: string;
+}
+
+export interface OnConclusionsCallback {
+  (conclusions: ReasonedConclusion[], peerId: string, sessionFile: string): Promise<void>;
+}
+
 export interface ReasoningEngineConfig {
   ollamaBaseUrl: string;
   ollamaApiKey: string;
@@ -16,6 +30,7 @@ export interface ReasoningEngineConfig {
   tokenBatchSize: number;
   retry?: Partial<RetryConfig>;
   concurrency?: number;  // Max concurrent Ollama requests (default: 1)
+  onConclusions?: OnConclusionsCallback; // Called when processQueue produces conclusions
 }
 
 export interface RetryConfig {
@@ -88,6 +103,47 @@ export class ReasoningEngine {
   getQueueSize(): number { return this.messageQueue.length; }
   isReasoning(): boolean { return this.isProcessing; }
 
+  /**
+   * Process unprocessed observations through reasoning and return conclusions.
+   * Used by learn_reason_now to bridge the observation → conclusion gap.
+   */
+  async reasonOnObservations(
+    observations: Array<{ id: string; content: string; role: string; sessionId: string }>,
+    peerId: string,
+    existingContext?: ReasoningContext
+  ): Promise<ReasonedConclusion[]> {
+    if (observations.length === 0) return [];
+
+    const messages = observations.map(o => ({ role: o.role, content: o.content }));
+    const result = await this.reason(messages, peerId, existingContext);
+
+    if (!result.conclusions || result.conclusions.length === 0) return [];
+
+    // Generate embeddings for each conclusion
+    const conclusionsWithEmbeddings: ReasonedConclusion[] = [];
+    
+    for (const c of result.conclusions) {
+      let embedding: number[] | undefined;
+      try {
+        embedding = await this.generateEmbedding(c.content);
+      } catch {
+        // Non-fatal
+        console.warn(`[ReasoningEngine] Failed to generate embedding for: ${c.content.slice(0, 50)}...`);
+      }
+      conclusionsWithEmbeddings.push({
+        content: c.content,
+        type: c.type as "deductive" | "inductive" | "abductive",
+        premises: c.premises,
+        scope: c.scope,
+        confidence: c.confidence,
+        embedding,
+        sourceSessionId: observations[0]?.sessionId || "reasoning",
+      });
+    }
+
+    return conclusionsWithEmbeddings;
+  }
+
   async generateEmbedding(text: string): Promise<number[]> {
     const response = await this.callOllama<{ embedding: number[] }>("/api/embeddings", { model: this.config.embeddingModel, prompt: text });
     return response.embedding;
@@ -148,7 +204,19 @@ export class ReasoningEngine {
       while (this.messageQueue.length > 0) {
         const item = this.messageQueue.shift()!;
         try {
-          await this.reason(item.messages, item.peerId);
+          const result = await this.reason(item.messages, item.peerId);
+          
+          // Save conclusions via callback if provided
+          if (result.conclusions && result.conclusions.length > 0 && this.config.onConclusions) {
+            const mapped = result.conclusions.map(c => ({
+              ...c,
+              type: c.type as "deductive" | "inductive" | "abductive",
+              sourceSessionId: item.sessionFile,
+            }));
+            await this.config.onConclusions(mapped, item.peerId, item.sessionFile);
+          }
+          
+          console.log(`[ReasoningEngine] Processed ${item.messages.length} messages, found ${result.conclusions?.length || 0} conclusions`);
         } catch (error) {
           console.error(`[ReasoningEngine] Failed to process queued item: ${error}`);
           // Continue with next item rather than stopping the entire queue

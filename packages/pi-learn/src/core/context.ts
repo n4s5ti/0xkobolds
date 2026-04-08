@@ -8,11 +8,11 @@
 
 import type { SQLiteStore } from "./store.js";
 import type { PeerRepresentation, Conclusion, Summary, MemoryInsights, PeerCard } from "../shared.js";
-import { GLOBAL_WORKSPACE_ID } from "../shared.js";
-import { cosineSimilarity } from "../shared.js";
+import { cosineSimilarity, GLOBAL_WORKSPACE_ID } from "../shared.js";
+import * as crypto from "crypto";
 
-export function createContextAssembler(store: SQLiteStore): ContextAssembler {
-  return new ContextAssembler(store);
+export function createContextAssembler(store: SQLiteStore, config?: { ollamaBaseUrl?: string; embeddingModel?: string }): ContextAssembler {
+  return new ContextAssembler(store, config);
 }
 
 export interface MemoryStats {
@@ -42,7 +42,13 @@ export interface BlendedContext {
 }
 
 export class ContextAssembler {
-  constructor(private store: SQLiteStore) {}
+  private ollamaBaseUrl: string;
+  private embeddingModel: string;
+
+  constructor(private store: SQLiteStore, config?: { ollamaBaseUrl?: string; embeddingModel?: string }) {
+    this.ollamaBaseUrl = config?.ollamaBaseUrl || "http://localhost:11434";
+    this.embeddingModel = config?.embeddingModel || "nomic-embed-text-v2-moe:latest";
+  }
 
   /**
    * Get blended context: global (user-scope) + local (project-scope)
@@ -138,21 +144,26 @@ export class ContextAssembler {
     
     if (!allConclusions.length) return [];
 
-    // Use embedding-based similarity when available, fallback to keyword
-    const queryWords = query.toLowerCase().split(/\s+/);
+    // Try embedding-based similarity first
+    const queryEmbedding = await this.getQueryEmbedding(query);
+    
     const scored = allConclusions.map((c) => {
       let confidence: number;
 
-      if (c.embedding && c.embedding.length > 0) {
-        // Hybrid approach: keyword + embedding presence boost
+      if (queryEmbedding && c.embedding && c.embedding.length > 0 && queryEmbedding.length === c.embedding.length) {
+        // Use full cosine similarity with actual embeddings
+        confidence = cosineSimilarity(queryEmbedding, c.embedding);
+      } else if (c.embedding && c.embedding.length > 0) {
+        // Has embedding but query doesn't (dimension mismatch) — use keyword + presence boost
+        const queryWords = query.toLowerCase().split(/\s+/);
         const contentWords = c.content.toLowerCase().split(/\s+/);
         const overlap = queryWords.filter((w) =>
           contentWords.some((cw) => cw.includes(w) || w.includes(cw))
         ).length;
-        const keywordScore = overlap / Math.max(queryWords.length, 1);
-        confidence = keywordScore * 0.6 + (c.embedding ? 0.4 : 0);
+        confidence = (overlap / Math.max(queryWords.length, 1)) * 0.6 + 0.4;
       } else {
-        // Keyword-only fallback
+        // Pure keyword fallback — no embeddings at all
+        const queryWords = query.toLowerCase().split(/\s+/);
         const contentWords = c.content.toLowerCase().split(/\s+/);
         const overlap = queryWords.filter((w) =>
           contentWords.some((cw) => cw.includes(w) || w.includes(cw))
@@ -167,6 +178,25 @@ export class ContextAssembler {
       .filter((c) => c.confidence >= minSimilarity)
       .sort((a, b) => b.confidence - a.confidence)
       .slice(0, topK);
+  }
+
+  /**
+   * Generate embedding for a query string, used by searchSimilar.
+   * Returns undefined if embedding generation fails.
+   */
+  private async getQueryEmbedding(query: string): Promise<number[] | undefined> {
+    try {
+      const response = await fetch(`${this.ollamaBaseUrl}/api/embeddings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: this.embeddingModel, prompt: query }),
+      });
+      if (!response.ok) return undefined;
+      const data = await response.json() as { embedding?: number[] };
+      return data.embedding;
+    } catch {
+      return undefined;
+    }
   }
 
   getConclusionsByType(workspaceId: string, peerId: string, type: Conclusion["type"], scope?: 'user' | 'project'): Conclusion[] {
@@ -522,5 +552,81 @@ export class ContextAssembler {
     }
     
     return parts.join("\n") || "No project context available.";
+  }
+
+  /**
+   * Auto-summarize sessions that have exceeded message count thresholds.
+   * Generates short summaries (every 20 msgs) and long summaries (every 60 msgs).
+   * Returns the number of summaries generated.
+   */
+  async autoSummarize(
+    workspaceId: string,
+    peerId: string,
+    reasoningEngine: { reason: (messages: Array<{ role: string; content: string }>, peerId: string, context?: any) => Promise<{ explicit: Array<{ content: string }>; deductive: Array<{ premises: string[]; conclusion: string }>; conclusions?: any[] }> }
+  ): Promise<{ shortCount: number; longCount: number }> {
+    const sessions = this.store.getAllSessions(workspaceId);
+    let shortCount = 0;
+    let longCount = 0;
+
+    for (const session of sessions) {
+      const messages = this.store.getMessages(workspaceId, session.id, 200);
+      const existingSummaries = this.store.getSummaries(workspaceId, peerId, 10);
+      const existingShort = existingSummaries.filter(s => s.sessionId === session.id && s.type === 'short').length;
+      const existingLong = existingSummaries.filter(s => s.sessionId === session.id && s.type === 'long').length;
+
+      // Short summary every 20 messages
+      if (messages.length >= (existingShort + 1) * 20) {
+        try {
+          const recentMsgs = messages.slice(-20).map((m: any) => ({ role: m.role, content: m.content }));
+          const result = await reasoningEngine.reason(recentMsgs, peerId);
+          const summaryText = result.explicit.length > 0
+            ? result.explicit.map((e) => e.content).join("; ")
+            : result.deductive.length > 0
+              ? result.deductive.map((d) => d.conclusion).join("; ")
+              : recentMsgs.map((m) => m.content.slice(0, 100)).join("; ");
+
+          this.store.saveSummary(workspaceId, {
+            id: crypto.randomUUID(),
+            sessionId: session.id,
+            peerId,
+            type: 'short',
+            content: summaryText,
+            messageCount: messages.length,
+            createdAt: Date.now(),
+          });
+          shortCount++;
+        } catch {
+          // Non-fatal — summarization can fail if LLM is unavailable
+        }
+      }
+
+      // Long summary every 60 messages
+      if (messages.length >= (existingLong + 1) * 60) {
+        try {
+          const recentMsgs = messages.slice(-60).map((m: any) => ({ role: m.role, content: m.content }));
+          const result = await reasoningEngine.reason(recentMsgs, peerId);
+          const summaryText = result.explicit.length > 0
+            ? result.explicit.map((e) => e.content).join("; ")
+            : result.deductive.length > 0
+              ? result.deductive.map((d) => d.conclusion).join("; ")
+              : `Session with ${messages.length} messages`;
+
+          this.store.saveSummary(workspaceId, {
+            id: crypto.randomUUID(),
+            sessionId: session.id,
+            peerId,
+            type: 'long',
+            content: summaryText,
+            messageCount: messages.length,
+            createdAt: Date.now(),
+          });
+          longCount++;
+        } catch {
+          // Non-fatal
+        }
+      }
+    }
+
+    return { shortCount, longCount };
   }
 }

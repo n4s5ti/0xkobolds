@@ -18,6 +18,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import * as path from "path";
 import * as fs from "fs";
+import * as crypto from "crypto";
 import * as os from "os";
 
 // Core modules
@@ -105,11 +106,38 @@ export default async (pi: ExtensionAPI): Promise<void> => {
     tokenBatchSize: config.tokenBatchSize,
     retry: config.retry,
     concurrency: config.concurrency,
+    onConclusions: async (conclusions, peerId, sessionFile) => {
+      // Save conclusions from background queue processing
+      for (const c of conclusions) {
+        const workspaceId = c.scope === 'user' ? '__global__' : config.workspaceId;
+        let embedding: number[] | undefined;
+        try {
+          embedding = await reasoningEngine.generateEmbedding(c.content);
+        } catch {
+          // Embedding generation failure is non-fatal
+        }
+        store.saveConclusion(workspaceId, {
+          id: crypto.randomUUID(),
+          peerId,
+          type: c.type,
+          content: c.content,
+          premises: c.premises,
+          confidence: c.confidence,
+          createdAt: Date.now(),
+          sourceSessionId: sessionFile,
+          embedding,
+          scope: c.scope,
+        });
+      }
+    },
   });
 
   console.assert(reasoningEngine !== null, 'reasoningEngine must not be null');
 
-  const contextAssembler = createContextAssembler(store);
+  const contextAssembler = createContextAssembler(store, {
+    ollamaBaseUrl: config.ollamaBaseUrl,
+    embeddingModel: config.embeddingModel,
+  });
   console.assert(contextAssembler !== null, 'contextAssembler must not be null');
 
   // ============================================================================

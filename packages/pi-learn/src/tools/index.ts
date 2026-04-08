@@ -387,8 +387,104 @@ export function createToolExecutors(deps: {
         ctx: ExtensionContext
       ): Promise<AgentToolResult<unknown>> => {
         ctx.ui.setStatus("learn", "Reasoning...");
-        const stats = contextAssembler.getMemoryStats(config.workspaceId, "user");
-        return { content: [{ type: "text" as const, text: `Reasoning complete. ${stats.conclusionCount} conclusions.` }], details: stats };
+        const peerId = "user";
+
+        // Fetch unprocessed observations
+        const observations = store.getUnprocessedObservations(config.workspaceId, peerId, 50);
+        const globalObservations = store.getUnprocessedObservations("__global__", peerId, 50);
+        const allObservations = [
+          ...observations.map(o => ({ id: o.id, content: o.content, role: o.role, sessionId: o.sessionId })),
+          ...globalObservations.map(o => ({ id: o.id, content: o.content, role: o.role, sessionId: o.sessionId })),
+        ];
+
+        if (allObservations.length === 0) {
+          return {
+            content: [{ type: "text" as const, text: "No unprocessed observations to reason about." }],
+            details: { processed: 0, conclusions: 0 },
+          };
+        }
+
+        // Get existing context for informed reasoning
+        const blended = contextAssembler.getBlendedContext(config.workspaceId, peerId);
+        const reasoningContext = {
+          globalConclusions: blended.global?.conclusions || [],
+          localConclusions: blended.project?.conclusions || [],
+          globalPeerCard: blended.global?.peerCard || undefined,
+        };
+
+        try {
+          // Run reasoning on observations
+          const conclusions = await reasoningEngine.reasonOnObservations(
+            allObservations,
+            peerId,
+            reasoningContext
+          );
+
+          // Save each conclusion to the appropriate workspace
+          let userScopeCount = 0;
+          let projectScopeCount = 0;
+
+          for (const c of conclusions) {
+            const workspaceId = c.scope === "user" ? "__global__" : config.workspaceId;
+            store.saveConclusion(workspaceId, {
+              id: crypto.randomUUID(),
+              peerId,
+              type: c.type,
+              content: c.content,
+              premises: c.premises,
+              confidence: c.confidence,
+              createdAt: Date.now(),
+              sourceSessionId: c.sourceSessionId,
+              embedding: c.embedding,
+              scope: c.scope,
+            });
+
+            if (c.scope === "user") {
+              userScopeCount++;
+            } else {
+              projectScopeCount++;
+            }
+          }
+
+          // Mark observations as processed
+          store.markObservationsProcessed(allObservations.map(o => o.id));
+
+          // Auto-summarize sessions that have enough messages
+          let summariesGenerated = 0;
+          try {
+            const summaryResult = await contextAssembler.autoSummarize(config.workspaceId, peerId, reasoningEngine);
+            summariesGenerated = summaryResult.shortCount + summaryResult.longCount;
+          } catch {
+            // Non-fatal: summarization failure shouldn't block reasoning
+          }
+
+          const totalConclusions = conclusions.length;
+          const summaryText = summariesGenerated > 0
+            ? ` Also generated ${summariesGenerated} session summaries.`
+            : "";
+          return {
+            content: [{
+              type: "text" as const,
+              text: `Reasoning complete. Processed ${allObservations.length} observations → ${totalConclusions} conclusions (${userScopeCount} user-scope, ${projectScopeCount} project-scope).${summaryText}`,
+            }],
+            details: {
+              processed: allObservations.length,
+              conclusions: totalConclusions,
+              userScopeCount,
+              projectScopeCount,
+              summariesGenerated,
+            },
+          };
+        } catch (error) {
+          const errMsg = error instanceof Error ? error.message : String(error);
+          return {
+            content: [{
+              type: "text" as const,
+              text: `Reasoning failed: ${errMsg}. ${allObservations.length} observations remain unprocessed.`,
+            }],
+            details: { error: true, message: errMsg, unprocessed: allObservations.length },
+          };
+        }
       }) as ToolExecute<any>,
     },
     learn_trigger_dream: {
