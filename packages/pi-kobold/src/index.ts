@@ -353,28 +353,35 @@ export default async (pi: ExtensionAPI): Promise<void> => {
   // pi-kobold alone activates everything.
   //
   // If a sub-extension was already loaded by pi's extension loader
-  // (e.g., root pi-config.ts lists it separately), we skip it to avoid
-  // re-running side effects like database init or event listener setup.
-  // pi's registerTool/registerCommand use Map<string, ...> so tool
-  // dedup is implicit, but side effects (DB connections, event handlers)
-  // are not idempotent.
+  // (e.g., root pi-config.ts lists it separately), we detect it by
+  // checking whether any of its known tool names are already registered.
+  // pi's registerTool uses Map.set() so duplicate tools silently overwrite,
+  // but side effects (DB connections, event listeners) are not idempotent
+  // and would run again on double-load.
   // --------------------------------------------------------------------------
-  const subExtensions: Array<{ name: string; factory: ExtensionFactory }> = [
-    { name: "pi-orchestration", factory: orchestrationExtension },
-    { name: "pi-gateway",      factory: gatewayExtension },
-    { name: "pi-ollama",      factory: ollamaExtension },
-    { name: "pi-learn",       factory: learnExtension },
-    { name: "pi-mcp",         factory: mcpExtension },
+  const subExtensions: Array<{ name: string; factory: ExtensionFactory; sentinel: { type: "tool" | "command"; name: string } }> = [
+    { name: "pi-orchestration", factory: orchestrationExtension, sentinel: { type: "tool", name: "orchestrate" } },
+    { name: "pi-gateway",      factory: gatewayExtension,      sentinel: { type: "tool", name: "gateway_status" } },
+    { name: "pi-ollama",      factory: ollamaExtension,        sentinel: { type: "command", name: "ollama" } },
+    { name: "pi-learn",       factory: learnExtension,          sentinel: { type: "tool", name: "learn_add_message" } },
+    { name: "pi-mcp",         factory: mcpExtension,            sentinel: { type: "tool", name: "mcp_discover" } },
   ];
 
-  for (const { name, factory } of subExtensions) {
-    try {
-      await factory(pi);
-      console.log(`[pi-kobold] ✅ Loaded sub-extension: ${name}`);
-    } catch (err) {
-      if (err instanceof Error && err.message.includes("already")) {
-        console.log(`[pi-kobold] ⏭️ Skipping ${name} (already loaded)`);
-      } else {
+  const existingTools = new Set((pi.getAllTools() as any[]).map((t: any) => t.name));
+  const existingCommands = new Set((pi.getCommands?.() as any[] ?? []).map((c: any) => c.name));
+
+  for (const { name, factory, sentinel } of subExtensions) {
+    const alreadyLoaded = sentinel.type === "tool"
+      ? existingTools.has(sentinel.name)
+      : existingCommands.has(sentinel.name);
+
+    if (alreadyLoaded) {
+      console.log(`[pi-kobold] ⏭️ Skipping ${name} (already loaded: ${sentinel.type} "${sentinel.name}" found)`);
+    } else {
+      try {
+        await factory(pi);
+        console.log(`[pi-kobold] ✅ Loaded sub-extension: ${name}`);
+      } catch (err) {
         console.error(`[pi-kobold] ⚠️ Failed to load sub-extension ${name}: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
