@@ -38,19 +38,21 @@ Duplicate registration is guarded — if a sub-extension was already loaded, pi-
 | `kobold_create_extension` | Generate boilerplate for a new extension |
 | `kobold_status` | Show status of all sub-extensions |
 
-### Git Package Sync Tools
+### Git Sync Tools
 
-Manage bidirectional sync between the monorepo and individual GitHub repos, plus issues and PRs.
+Generic git↔GitHub sync tools that work for any project, org, or directory structure. Two modes: **subtree** (monorepo subdirs → individual repos) and **standalone** (single repo → GitHub).
+
+All settings are configurable via tool params, `.git-sync.json` config file, or auto-detected from git remotes.
 
 | Tool | Description |
 |------|-------------|
-| `git_package_status` | Show sync status of all pi-packages (drift, missing repos, unconfigured remotes) |
-| `git_package_push` | Push a package subtree to its individual GitHub repo |
-| `git_package_pull` | Pull changes from an individual repo into the monorepo |
-| `git_package_init` | Create a GitHub repo for a package and push initial content |
-| `git_issue` | List or create GitHub issues on a package repo |
-| `git_pr` | List or create pull requests on a package repo |
-| `git_worktree` | Manage git worktrees for isolated package development |
+| `git_package_status` | Show sync status of subdirectories or standalone repo |
+| `git_package_push` | Push a subdirectory (subtree) or repo to GitHub |
+| `git_package_pull` | Pull from GitHub into a subdirectory or repo |
+| `git_package_init` | Create a GitHub repo and push initial content |
+| `git_issue` | List or create GitHub issues on any repo |
+| `git_pr` | List or create pull requests on any repo |
+| `git_worktree` | Manage git worktrees for isolated development |
 
 These tools use `git subtree` for history-preserving sync and `gh` CLI for GitHub operations. The monorepo is the source of truth — changes flow from `packages/<name>/` out to individual repos via `git_package_push`, and external contributions flow back in via `git_package_pull`.
 
@@ -66,8 +68,8 @@ These tools use `git subtree` for history-preserving sync and `gh` CLI for GitHu
 │ • Chain      │ • Secure  │ • Cloud  │ • Reason │ • SSE       │
 │ • Parallel   │ • BG task │ • Vision │ • Dream  │ • WebSocket │
 ├──────────────┴──────────┴──────────┴──────────┴─────────────┤
-│ Git Package Sync (7 tools)                                  │
-│ • subtree push/pull • repo init • issues • PRs • worktrees │
+│ Git Sync (7 tools — subtree + standalone)                    │
+│ • push/pull • repo init • issues • PRs • worktrees • config │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -89,14 +91,20 @@ pi install npm:@0xkobold/pi-kobold
 # Check package sync status
 git_package_status()
 
-# Push a package to its individual repo
-git_package_push(package="pi-gateway")
+# Push a subdirectory to its individual repo (subtree mode)
+git_package_push(name="pi-gateway")
+
+# Push a standalone project to GitHub
+git_package_push(mode="standalone", org="my-org")
 
 # Pull external changes back
-git_package_pull(package="pi-ollama")
+git_package_pull(name="pi-ollama")
 
-# Create a GitHub issue
-git_issue(package="pi-mcp", title="Bug: connection timeout", labels=["bug"])
+# Create a GitHub repo for a new project
+git_package_init(name="my-app", org="my-org")
+
+# Create a GitHub issue on any repo
+git_issue(repo="pi-mcp", title="Bug: connection timeout", labels=["bug"])
 ```
 
 ## LLM Executor

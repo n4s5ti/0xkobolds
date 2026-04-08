@@ -306,7 +306,9 @@ describe("Git Package Sync Tools", () => {
     const statusTool = (pi.getAllTools() as any[]).find((t: any) => t.name === "git_package_status");
     expect(statusTool).toBeDefined();
     expect(statusTool.description).toContain("sync status");
-    expect(statusTool.parameters.properties.package).toBeDefined();
+    expect(statusTool.parameters.properties.name).toBeDefined();
+    expect(statusTool.parameters.properties.org).toBeDefined();
+    expect(statusTool.parameters.properties.mode).toBeDefined();
   });
 
   test("git_issue tool schema has action union", async () => {

@@ -1,32 +1,60 @@
 /**
- * Git Package Sync Tools
+ * Git Sync Tools
  *
- * Bidirectional sync between the 0xKobold monorepo and individual
- * pi-package repos, plus GitHub Issues/PR management scoped to packages.
+ * Generic git↔GitHub sync tools that work for any project:
  *
- * Uses git subtree for history-preserving splits and the GitHub CLI
- * (gh) for repo/issue/PR operations.
+ * - Monorepo subtree sync (push/pull subdirectories to individual repos)
+ * - Standalone repo push/pull
+ * - GitHub Issues & PR management
+ * - Git worktree management
+ *
+ * All org names, prefixes, and directory structures are configurable
+ * via tool parameters or a `.git-sync.json` config file at the repo root.
+ *
+ * Auto-detection: if no config or params are provided, the tools infer
+ * the GitHub org from git remotes and list subdirectories from the
+ * directory structure.
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { execSync, execFileSync } from "node:child_process";
+import { execSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 // ============================================================================
-// Constants
+// Types
 // ============================================================================
 
-const ORG = "0xKobold";
-const PACKAGES_DIR = "packages";
-const KOBOLD_DIR = join(process.env.HOME || "~", ".0xkobold");
+interface GitSyncConfig {
+  /** GitHub org or user (e.g. "my-org") */
+  org?: string;
+  /** Subdirectory prefix in the monorepo (e.g. "packages", "libs") */
+  prefix?: string;
+  /** Glob pattern for listing subdirectories (e.g. "pi-*", "lib-*", "*") */
+  pattern?: string;
+  /** Remote naming convention: "pkg-{name}" by default */
+  remotePrefix?: string;
+  /** Default branch (default: "main") */
+  defaultBranch?: string;
+  /** Visibility for new repos: "public" or "private" */
+  visibility?: "public" | "private";
+  /** Mode: "subtree" for monorepo prefix sync, "standalone" for single repo */
+  mode?: "subtree" | "standalone";
+}
+
+interface RunResult {
+  ok: boolean;
+  stdout: string;
+  stderr: string;
+  code: number;
+}
 
 // ============================================================================
-// Helpers
+// Shell Helpers
 // ============================================================================
 
-function run(cmd: string, cwd?: string): { ok: boolean; stdout: string; stderr: string; code: number } {
+function run(cmd: string, cwd?: string): RunResult {
   try {
     const stdout = execSync(cmd, {
       cwd: cwd || process.cwd(),
@@ -54,13 +82,64 @@ function runQuiet(cmd: string, cwd?: string): string {
   }
 }
 
-/** Detect the monorepo root by walking up from cwd looking for packages/ */
-function findMonorepoRoot(startDir?: string): string | null {
+// ============================================================================
+// Config Resolution
+// ============================================================================
+
+const CONFIG_FILES = [".git-sync.json", ".git-sync.jsonc"];
+
+/** Read config from a JSON file in the repo root */
+function readConfigFile(root: string): GitSyncConfig {
+  for (const file of CONFIG_FILES) {
+    const path = join(root, file);
+    if (existsSync(path)) {
+      try {
+        const raw = readFileSync(path, "utf-8");
+        // Strip comments for .jsonc
+        const stripped = raw.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
+        return JSON.parse(stripped);
+      } catch (err) {
+        console.warn(`[git-sync] Warning: Failed to parse ${path}: ${err}`);
+      }
+    }
+  }
+  return {};
+}
+
+/** Read org from package.json repository field */
+function readOrgFromPackageJson(root: string, pkgDir?: string): string | undefined {
+  const dir = pkgDir ? join(root, pkgDir) : root;
+  const pkgJsonPath = join(dir, "package.json");
+  if (!existsSync(pkgJsonPath)) return undefined;
+
+  try {
+    const data = JSON.parse(readFileSync(pkgJsonPath, "utf-8"));
+    // "repository": { "url": "https://github.com/org/name.git" }
+    const repoUrl = data.repository?.url || data.repository;
+    if (typeof repoUrl === "string") {
+      const match = repoUrl.match(/github\.com[:/]([^/]+)/);
+      if (match) return match[1];
+    }
+  } catch { /* ignore */ }
+
+  return undefined;
+}
+
+/** Detect the GitHub org from git remotes */
+function detectOrg(root: string): string | undefined {
+  const remotes = runQuiet("git remote -v", root);
+  for (const line of remotes.split("\n")) {
+    const match = line.match(/github\.com[:/]([^/]+)/);
+    if (match) return match[1];
+  }
+  return undefined;
+}
+
+/** Detect git root (walk up from cwd looking for .git) */
+function findGitRoot(startDir?: string): string | null {
   let dir = startDir || process.cwd();
   for (let i = 0; i < 10; i++) {
-    if (existsSync(join(dir, PACKAGES_DIR)) && existsSync(join(dir, ".git"))) {
-      return dir;
-    }
+    if (existsSync(join(dir, ".git"))) return dir;
     const parent = join(dir, "..");
     if (parent === dir) break;
     dir = parent;
@@ -68,62 +147,86 @@ function findMonorepoRoot(startDir?: string): string | null {
   return null;
 }
 
-/** List all pi- packages in the monorepo */
-function listPackages(root: string): string[] {
-  const result = run(`ls -d ${PACKAGES_DIR}/pi-*/`, root);
+/** Merge config from file + params, with auto-detection fallbacks */
+function resolveConfig(root: string, params: GitSyncConfig = {}): Required<GitSyncConfig> {
+  const fileConfig = readConfigFile(root);
+  const org = params.org || fileConfig.org || detectOrg(root) || "UNKNOWN_ORG";
+  const prefix = params.prefix !== undefined ? params.prefix : (fileConfig.prefix || "packages");
+  const pattern = params.pattern || fileConfig.pattern || "*";
+  const remotePrefix = params.remotePrefix || fileConfig.remotePrefix || "pkg-";
+  const defaultBranch = params.defaultBranch || fileConfig.defaultBranch || "main";
+  const visibility = params.visibility || fileConfig.visibility || "public";
+  const mode = params.mode || fileConfig.mode || (prefix ? "subtree" : "standalone");
+
+  return { org, prefix, pattern, remotePrefix, defaultBranch, visibility, mode };
+}
+
+// ============================================================================
+// Directory & Remote Helpers
+// ============================================================================
+
+/** List subdirectories matching a pattern under the prefix */
+function listSubdirs(root: string, prefix: string, pattern: string): string[] {
+  const targetDir = prefix ? join(root, prefix) : root;
+  if (!existsSync(targetDir)) return [];
+
+  const glob = `${targetDir}/${pattern}`;
+  const result = run(`ls -d ${glob}/ 2>/dev/null`, root);
   if (!result.ok) return [];
+
   return result.stdout
     .split("\n")
     .filter(Boolean)
-    .map((p) => p.replace(/\/$/, "").replace(/^packages\//, ""))
+    .map((p) => p.replace(/\/$/, "").replace(/.*\//, ""))  // basename
+    .filter((name) => !name.startsWith("."))                 // skip hidden
     .sort();
 }
 
-/** Read package.json name field */
-function getPackageName(root: string, pkg: string): string {
-  const pkgJson = join(root, PACKAGES_DIR, pkg, "package.json");
-  if (!existsSync(pkgJson)) return `${ORG.toLowerCase()}/${pkg}`;
+/** Get the npm/package name from a directory's package.json */
+function getPackageName(dir: string): string {
+  const pkgJsonPath = join(dir, "package.json");
+  if (!existsSync(pkgJsonPath)) return "";
   try {
-    const data = JSON.parse(readFileSync(pkgJson, "utf-8"));
-    return data.name || pkg;
+    return JSON.parse(readFileSync(pkgJsonPath, "utf-8")).name || "";
   } catch {
-    return pkg;
+    return "";
   }
 }
 
 /** Check if a GitHub repo exists */
-function repoExists(pkg: string): boolean {
-  const result = run(`gh repo view ${ORG}/${pkg} --json name 2>/dev/null`);
-  return result.ok;
+function repoExists(org: string, name: string): boolean {
+  return run(`gh repo view ${org}/${name} --json name 2>/dev/null`).ok;
 }
 
-/** Get the git remote name for a package (pkg-<name> convention) */
-function getRemoteName(pkg: string): string {
-  return `pkg-${pkg}`;
-}
+/** Get or create the remote name for a subdirectory */
+function ensureRemote(root: string, name: string, org: string, remotePrefix: string): { ok: boolean; remote: string; url: string } {
+  const remoteName = `${remotePrefix}${name}`;
+  const httpsUrl = `https://github.com/${org}/${name}.git`;
 
-/** Ensure the remote exists in the local git config */
-function ensureRemote(root: string, pkg: string): { ok: boolean; remote: string; url: string } {
-  const remoteName = getRemoteName(pkg);
-  const url = `git@github.com:${ORG}/${pkg}.git`;
+  // Check if any remote already points to this repo (any name, any protocol)
+  const remotes = runQuiet(`git remote -v`, root);
+  const matchLine = remotes.split('\n').find(line =>
+    line.includes('github.com') && line.match(new RegExp(`[/:]${org}/${name}[./]`))
+  );
+  if (matchLine) {
+    const existingRemote = matchLine.split(/\s+/)[0];
+    const existingUrl = runQuiet(`git remote get-url ${existingRemote}`, root);
+    return { ok: true, remote: existingRemote, url: existingUrl };
+  }
 
+  // Check if the named remote already exists
   const existing = runQuiet(`git remote get-url ${remoteName}`, root);
   if (existing) {
     return { ok: true, remote: remoteName, url: existing };
   }
 
-  const addResult = run(`git remote add ${remoteName} ${url}`, root);
-  if (addResult.ok) {
-    return { ok: true, remote: remoteName, url };
+  // Add new remote — use HTTPS (SSH requires key setup)
+  const addResult = run(`git remote add ${remoteName} ${httpsUrl}`, root);
+  if (addResult.ok || runQuiet(`git remote`, root).split("\n").includes(remoteName)) {
+    return { ok: true, remote: remoteName, url: httpsUrl };
   }
 
-  // Remote might already exist under a different case
-  const listResult = runQuiet(`git remote`, root);
-  if (listResult.split("\n").includes(remoteName)) {
-    return { ok: true, remote: remoteName, url };
-  }
-
-  return { ok: false, remote: remoteName, url };
+  return { ok: false, remote: remoteName, url: httpsUrl };
 }
 
 // ============================================================================
@@ -131,84 +234,111 @@ function ensureRemote(root: string, pkg: string): { ok: boolean; remote: string;
 // ============================================================================
 
 /**
- * git_package_status — Show sync status of all pi-packages
+ * git_status — Show sync status of subdirectories or standalone repo
  */
-async function packageStatus(params: {
-  package?: string;
+async function gitStatus(params: {
+  name?: string;
+  org?: string;
+  prefix?: string;
+  pattern?: string;
+  mode?: "subtree" | "standalone";
   cwd?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; details: any }> {
-  const root = findMonorepoRoot(params.cwd) || process.cwd();
-  const packages = params.package ? [params.package] : listPackages(root);
+  const root = findGitRoot(params.cwd) || process.cwd();
+  const config = resolveConfig(root, params);
+  const { org, prefix, pattern, remotePrefix, defaultBranch, mode } = config;
 
-  if (packages.length === 0) {
+  // Standalone mode — just show the current repo status
+  if (mode === "standalone") {
+    const remote = runQuiet("git remote get-url origin", root);
+    const branch = runQuiet("git branch --show-current", root);
+    const ahead = runQuiet(`git log origin/${branch}..HEAD --oneline 2>/dev/null | wc -l`, root);
+    const behind = runQuiet(`git log HEAD..origin/${branch} --oneline 2>/dev/null | wc -l`, root);
+    const hasRemote = !!remote;
+    const onGitHub = hasRemote && remote.includes("github.com");
+
+    const text = [
+      `## 📦 Git Status (standalone)\n`,
+      `| Property | Value |`,
+      `|----------|-------|`,
+      `| Root | \`${root}\` |`,
+      `| Branch | \`${branch || "unknown"}\` |`,
+      `| Remote | ${hasRemote ? `\`${remote}\`` : "—"} |`,
+      `| GitHub | ${onGitHub ? "✅" : "—"} |`,
+      `| Ahead | ${ahead || 0} commits |`,
+      `| Behind | ${behind || 0} commits |`,
+    ].join("\n");
+
     return {
-      content: [{ type: "text", text: "No pi-packages found in monorepo." }],
-      details: { packages: [] },
+      content: [{ type: "text", text }],
+      details: { root, mode: "standalone", org, branch, remote, ahead, behind },
     };
   }
 
-  // Fetch all remotes first for accurate status
-  runQuiet(`git fetch --all --quiet 2>/dev/null`, root);
+  // Subtree mode — list subdirectories and their sync status
+  const names = params.name ? [params.name] : listSubdirs(root, prefix, pattern);
+
+  if (names.length === 0) {
+    return {
+      content: [{ type: "text", text: `No subdirectories found under \`${prefix}/${pattern}\` in \`${root}\`.\n\nTip: Set \`prefix\` and \`pattern\` params or create a \`.git-sync.json\` config file.` }],
+      details: { root, mode: "subtree", names: [], org, prefix, pattern },
+    };
+  }
+
+  // Fetch all remotes
+  runQuiet("git fetch --all --quiet 2>/dev/null", root);
 
   const rows: Array<{
-    package: string;
+    name: string;
     npmName: string;
     hasRemote: boolean;
     repoExists: boolean;
     syncStatus: string;
-    remoteAhead: number;
-    localAhead: number;
   }> = [];
 
   const lines: string[] = [
-    "## 📦 Package Sync Status\n",
-    "| Package | NPM Name | Remote | GitHub | Sync |",
-    "|---------|----------|--------|--------|------|",
+    `## 📦 Package Sync Status\n`,
+    `**Org:** \`${org}\` • **Prefix:** \`${prefix}\` • **Pattern:** \`${pattern}\`\n`,
+    `| Name | Package | Remote | GitHub | Sync |`,
+    `|------|---------|--------|--------|------|`,
   ];
 
-  for (const pkg of packages) {
-    const npmName = getPackageName(root, pkg);
-    const remoteName = getRemoteName(pkg);
-    const hasRemote = runQuiet(`git remote get-url ${remoteName}`, root).length > 0;
-    const onGitHub = repoExists(pkg);
+  for (const name of names) {
+    const pkgDir = join(root, prefix, name);
+    const npmName = getPackageName(pkgDir) || name;
+    const remoteName = `${remotePrefix}${name}`;
+    const hasRemote = !!runQuiet(`git remote get-url ${remoteName}`, root);
+    const onGitHub = repoExists(org, name);
 
     let syncStatus = "—";
-    let remoteAhead = 0;
-    let localAhead = 0;
 
-    if (hasRemote && onGitHub) {
-      // Fetch the remote
-      runQuiet(`git fetch ${remoteName} main 2>/dev/null`, root);
+    if (onGitHub) {
+      const remoteSetup = ensureRemote(root, name, org, remotePrefix);
+      if (remoteSetup.ok) {
+        runQuiet(`git fetch ${remoteSetup.remote} ${defaultBranch} 2>/dev/null`, root);
 
-      // Try subtree split to get the local hash for this prefix
-      const splitResult = run(`git subtree split --prefix=${PACKAGES_DIR}/${pkg} -b _sync_${pkg} 2>/dev/null`, root);
-      let localHash = "";
-      if (splitResult.ok) {
-        localHash = splitResult.stdout.split("\n").pop() || "";
-        runQuiet(`git branch -D _sync_${pkg} 2>/dev/null`, root);
-      }
+        // Content-based comparison instead of git subtree split
+        // Extract both trees to temp dirs and diff them
+        const tmpRemote = `/tmp/git-sync-${name}-st`;
+        const tmpLocal = `/tmp/git-sync-${name}-sl`;
+        runQuiet(`rm -rf "${tmpRemote}" "${tmpLocal}"`, root);
+        runQuiet(`mkdir -p "${tmpRemote}"`, root);
+        runQuiet(`mkdir -p "${tmpLocal}/${prefix}/${name}"`, root);
 
-      const remoteHead = runQuiet(`git rev-parse ${remoteName}/main 2>/dev/null`, root);
+        const remoteArchiveOk = runQuiet(`git archive ${remoteSetup.remote}/${defaultBranch} 2>/dev/null | tar -x -C "${tmpRemote}"`, root);
+        const localArchiveOk = runQuiet(`git archive HEAD -- ${prefix}/${name} 2>/dev/null | tar -x -C "${tmpLocal}"`, root);
 
-      if (localHash && remoteHead) {
-        if (localHash === remoteHead) {
+        const diffOutput = runQuiet(`diff -rq "${tmpLocal}/${prefix}/${name}" "${tmpRemote}" 2>/dev/null || true`, root);
+        runQuiet(`rm -rf "${tmpRemote}" "${tmpLocal}"`, root);
+
+        if (diffOutput.trim() === "") {
           syncStatus = "✅ synced";
         } else {
-          // Check divergence
-          const aheadCount = runQuiet(
-            `git rev-list ${remoteHead}..${localHash} --count 2>/dev/null`,
-            root
-          );
-          const behindCount = runQuiet(
-            `git rev-list ${localHash}..${remoteHead} --count 2>/dev/null`,
-            root
-          );
-          remoteAhead = parseInt(behindCount) || 0;
-          localAhead = parseInt(aheadCount) || 0;
-          syncStatus = remoteAhead > 0 ? `⬇️ behind by ${remoteAhead}` : `⬆️ ahead by ${localAhead}`;
+          const fileCount = diffOutput.trim().split("\n").length;
+          syncStatus = `↔ ${fileCount} file${fileCount !== 1 ? "s" : ""} differ`;
         }
       } else {
-        syncStatus = "⚠️ no history";
+        syncStatus = "⚠️ no remote";
       }
     } else if (!onGitHub) {
       syncStatus = "❌ no repo";
@@ -216,243 +346,409 @@ async function packageStatus(params: {
       syncStatus = "⚠️ no remote";
     }
 
-    rows.push({ package: pkg, npmName, hasRemote, repoExists: onGitHub, syncStatus, remoteAhead, localAhead });
-    lines.push(
-      `| ${pkg} | ${npmName} | ${hasRemote ? "✅" : "—"} | ${onGitHub ? "✅" : "—"} | ${syncStatus} |`
-    );
+    rows.push({ name, npmName, hasRemote, repoExists: onGitHub, syncStatus });
+    lines.push(`| ${name} | ${npmName} | ${hasRemote ? "✅" : "—"} | ${onGitHub ? "✅" : "—"} | ${syncStatus} |`);
   }
 
   lines.push("");
-  lines.push(`**${packages.length} packages** • Monorepo root: \`${root}\``);
+  lines.push(`**${names.length} packages** • Root: \`${root}\` • Org: \`${org}\``);
 
   return {
     content: [{ type: "text", text: lines.join("\n") }],
-    details: {
-      root,
-      packages: rows,
-    },
+    details: { root, mode: "subtree", packages: rows, org, prefix, pattern },
   };
 }
 
 /**
- * git_package_push — Push a package subtree to its individual repo
+ * git_push — Push a subdirectory or standalone repo to GitHub
  */
-async function packagePush(params: {
-  package: string;
+async function gitPush(params: {
+  name?: string;
+  org?: string;
+  prefix?: string;
+  mode?: "subtree" | "standalone";
   branch?: string;
   force?: boolean;
+  remote?: string;
   cwd?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; details: any }> {
-  const root = findMonorepoRoot(params.cwd) || process.cwd();
-  const pkg = params.package;
-  const branch = params.branch || "main";
+  const root = findGitRoot(params.cwd) || process.cwd();
+  const config = resolveConfig(root, params);
+  const { org, prefix, remotePrefix, defaultBranch, visibility, mode } = config;
+  const branch = params.branch || defaultBranch;
   const forceFlag = params.force ? " --force" : "";
-  const pkgDir = join(root, PACKAGES_DIR, pkg);
 
+  // Standalone mode — simple git push
+  if (mode === "standalone") {
+    const remote = params.remote || "origin";
+    const pushResult = run(`git push${forceFlag} ${remote} ${branch} 2>&1`, root);
+
+    if (!pushResult.ok) {
+      return {
+        content: [{ type: "text", text: `❌ Push failed:\n\`\`\`\n${pushResult.stderr}\n\`\`\`` }],
+        details: { error: true, mode: "standalone", remote, branch },
+      };
+    }
+
+    return {
+      content: [{ type: "text", text: `✅ Pushed to \`${remote}/${branch}\`\n\n${pushResult.stdout}` }],
+      details: { success: true, mode: "standalone", remote, branch },
+    };
+  }
+
+  // Subtree mode
+  const name = params.name;
+  if (!name) {
+    return {
+      content: [{ type: "text", text: "❌ `name` is required in subtree mode (the subdirectory name to push)" }],
+      details: { error: true, mode: "subtree" },
+    };
+  }
+
+  const pkgDir = join(root, prefix, name);
   if (!existsSync(pkgDir)) {
     return {
-      content: [{ type: "text", text: `❌ Package directory not found: ${PACKAGES_DIR}/${pkg}` }],
-      details: { error: true, package: pkg },
+      content: [{ type: "text", text: `❌ Directory not found: \`${prefix}/${name}\`` }],
+      details: { error: true, name, mode: "subtree" },
     };
   }
 
   // Ensure GitHub repo exists
-  if (!repoExists(pkg)) {
-    const createResult = run(`gh repo create ${ORG}/${pkg} --public --description "Pi package: ${pkg}" 2>&1`);
+  if (!repoExists(org, name)) {
+    const desc = getPackageName(pkgDir) || name;
+    const createResult = run(`gh repo create ${org}/${name} --${visibility} --description "${desc}" 2>&1`);
     if (!createResult.ok) {
       return {
-        content: [{ type: "text", text: `❌ Failed to create GitHub repo ${ORG}/${pkg}: ${createResult.stderr}` }],
-        details: { error: true, package: pkg, step: "create_repo" },
+        content: [{ type: "text", text: `❌ Failed to create ${org}/${name}: ${createResult.stderr}` }],
+        details: { error: true, name, step: "create_repo" },
       };
     }
   }
 
   // Ensure remote is configured
-  const remoteSetup = ensureRemote(root, pkg);
+  const remoteSetup = ensureRemote(root, name, org, remotePrefix);
   if (!remoteSetup.ok) {
     return {
-      content: [{ type: "text", text: `❌ Failed to set up git remote for ${pkg}` }],
-      details: { error: true, package: pkg, step: "remote_setup" },
+      content: [{ type: "text", text: `❌ Failed to set up git remote for \`${name}\`` }],
+      details: { error: true, name, step: "remote_setup" },
     };
   }
 
-  // Fetch remote main
-  runQuiet(`git fetch ${remoteSetup.remote} ${branch} 2>/dev/null`, root);
-
   // Push via subtree
-  const pushCmd = `git subtree push${forceFlag} --prefix=${PACKAGES_DIR}/${pkg} ${remoteSetup.remote} ${branch}`;
+  const pushCmd = `git subtree push${forceFlag} --prefix=${prefix}/${name} ${remoteSetup.remote} ${branch}`;
   const pushResult = run(pushCmd, root);
 
   if (!pushResult.ok) {
     return {
       content: [{
         type: "text",
-        text: `❌ Subtree push failed for ${pkg}:\n\`\`\`\n${pushResult.stderr}\n\`\`\`\n\nTry with \`force: true\` to overwrite, or resolve conflicts manually.`,
+        text: `❌ Subtree push failed for \`${name}\`:\n\`\`\`\n${pushResult.stderr}\n\`\`\`\n\nTry with \`force: true\` to overwrite, or resolve conflicts manually.`,
       }],
-      details: { error: true, package: pkg, step: "push", stderr: pushResult.stderr },
+      details: { error: true, name, step: "push", stderr: pushResult.stderr },
     };
   }
 
   return {
-    content: [{
-      type: "text",
-      text: `✅ Pushed \`${pkg}\` to \`${ORG}/${pkg}\` (${branch})\n\n${pushResult.stdout}`,
-    }],
-    details: { success: true, package: pkg, remote: remoteSetup.remote, branch },
+    content: [{ type: "text", text: `✅ Pushed \`${name}\` to \`${org}/${name}\` (${branch})\n\n${pushResult.stdout}` }],
+    details: { success: true, name, remote: remoteSetup.remote, branch, org },
   };
 }
 
 /**
- * git_package_pull — Pull changes from an individual repo into the monorepo
+ * git_pull — Pull changes from GitHub into a subdirectory or standalone repo
  */
-async function packagePull(params: {
-  package: string;
+async function gitPull(params: {
+  name?: string;
+  org?: string;
+  prefix?: string;
+  mode?: "subtree" | "standalone";
   branch?: string;
   squash?: boolean;
+  remote?: string;
   cwd?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; details: any }> {
-  const root = findMonorepoRoot(params.cwd) || process.cwd();
-  const pkg = params.package;
-  const branch = params.branch || "main";
+  const root = findGitRoot(params.cwd) || process.cwd();
+  const config = resolveConfig(root, params);
+  const { org, prefix, remotePrefix, defaultBranch, mode } = config;
+  const branch = params.branch || defaultBranch;
   const squash = params.squash !== false; // default true
-  const pkgDir = join(root, PACKAGES_DIR, pkg);
+  const remote = params.remote || "origin";
 
-  if (!existsSync(pkgDir)) {
-    return {
-      content: [{ type: "text", text: `❌ Package directory not found: ${PACKAGES_DIR}/${pkg}` }],
-      details: { error: true, package: pkg },
-    };
-  }
+  // Standalone mode
+  if (mode === "standalone") {
+    const pullResult = run(`git pull ${remote} ${branch} 2>&1`, root);
 
-  if (!repoExists(pkg)) {
-    return {
-      content: [{ type: "text", text: `❌ GitHub repo ${ORG}/${pkg} does not exist` }],
-      details: { error: true, package: pkg },
-    };
-  }
-
-  const remoteSetup = ensureRemote(root, pkg);
-  if (!remoteSetup.ok) {
-    return {
-      content: [{ type: "text", text: `❌ Failed to set up remote for ${pkg}` }],
-      details: { error: true, package: pkg, step: "remote_setup" },
-    };
-  }
-
-  // Fetch latest
-  const fetchResult = run(`git fetch ${remoteSetup.remote} ${branch}`, root);
-  if (!fetchResult.ok) {
-    return {
-      content: [{ type: "text", text: `❌ Failed to fetch ${remoteSetup.remote}/${branch}: ${fetchResult.stderr}` }],
-      details: { error: true, package: pkg, step: "fetch" },
-    };
-  }
-
-  // Subtree pull
-  const squashFlag = squash ? " --squash" : "";
-  const pullCmd = `git subtree pull${squashFlag} --prefix=${PACKAGES_DIR}/${pkg} ${remoteSetup.remote} ${branch}`;
-  const pullResult = run(pullCmd, root);
-
-  if (!pullResult.ok) {
-    // Check for conflicts
-    if (pullResult.stderr.includes("conflict") || pullResult.stderr.includes("CONFLICT")) {
+    if (!pullResult.ok) {
+      if (pullResult.stderr.includes("CONFLICT") || pullResult.stderr.includes("conflict")) {
+        return {
+          content: [{ type: "text", text: `⚠️ Merge conflicts:\n\`\`\`\n${pullResult.stderr}\n\`\`\`\n\nResolve conflicts, then \`git add . && git commit\`.` }],
+          details: { error: true, mode: "standalone", step: "conflict" },
+        };
+      }
       return {
-        content: [{
-          type: "text",
-          text: `⚠️ Merge conflicts pulling ${pkg}:\n\`\`\`\n${pullResult.stderr}\n\`\`\`\n\nResolve conflicts manually:\n1. \`cd ${root}\`\n2. Edit conflicted files in \`${PACKAGES_DIR}/${pkg}/\`\n3. \`git add ${PACKAGES_DIR}/${pkg}/\`\n4. \`git commit -m "merge: resolve conflicts from ${pkg} sync"\``,
-        }],
-        details: { error: true, package: pkg, step: "conflict", stderr: pullResult.stderr },
+        content: [{ type: "text", text: `❌ Pull failed:\n\`\`\`\n${pullResult.stderr}\n\`\`\`` }],
+        details: { error: true, mode: "standalone" },
       };
     }
 
     return {
-      content: [{ type: "text", text: `❌ Subtree pull failed for ${pkg}:\n\`\`\`\n${pullResult.stderr}\n\`\`\`` }],
-      details: { error: true, package: pkg, step: "pull", stderr: pullResult.stderr },
+      content: [{ type: "text", text: `✅ Pulled from \`${remote}/${branch}\`\n\n${pullResult.stdout}` }],
+      details: { success: true, mode: "standalone", remote, branch },
     };
   }
 
+  // Subtree mode
+  const name = params.name;
+  if (!name) {
+    return {
+      content: [{ type: "text", text: "❌ `name` is required in subtree mode (the subdirectory name to pull)" }],
+      details: { error: true, mode: "subtree" },
+    };
+  }
+
+  const pkgDir = join(root, prefix, name);
+  if (!existsSync(pkgDir)) {
+    return {
+      content: [{ type: "text", text: `❌ Directory not found: \`${prefix}/${name}\`` }],
+      details: { error: true, name },
+    };
+  }
+
+  if (!repoExists(org, name)) {
+    return {
+      content: [{ type: "text", text: `❌ GitHub repo \`${org}/${name}\` does not exist` }],
+      details: { error: true, name },
+    };
+  }
+
+  const remoteSetup = ensureRemote(root, name, org, remotePrefix);
+  if (!remoteSetup.ok) {
+    return {
+      content: [{ type: "text", text: `❌ Failed to set up remote for \`${name}\`` }],
+      details: { error: true, name },
+    };
+  }
+
+  // Fetch
+  const fetchResult = run(`git fetch ${remoteSetup.remote} ${branch}`, root);
+  if (!fetchResult.ok) {
+    return {
+      content: [{ type: "text", text: `❌ Fetch failed: ${fetchResult.stderr}` }],
+      details: { error: true, name, step: "fetch" },
+    };
+  }
+
+  // Content-based pull: extract remote tree into the package directory
+  // This avoids the "unrelated histories" problem that git subtree pull creates
+  // when the standalone repo has a different commit history than the monorepo prefix.
+  //
+  // How it works:
+  //   1. git archive the remote tree to a temp dir
+  //   2. git archive the local package dir to another temp dir (with prefix stripped)
+  //   3. Compare with diff -rq to check for changes
+  //   4. If different, extract remote tree over the package dir
+  //   5. Stage changes and prompt user to commit
+
+  // Check for content differences
+  const tmpRemote = `/tmp/git-sync-${name}-remote`;
+  const tmpLocal = `/tmp/git-sync-${name}-local`;
+  runQuiet(`rm -rf "${tmpRemote}" "${tmpLocal}"`, root);
+  run(`mkdir -p "${tmpRemote}"`, root);
+  run(`mkdir -p "${tmpLocal}/${prefix}/${name}"`, root);
+
+  // Extract remote tree
+  const archiveRemote = run(`git archive ${remoteSetup.remote}/${branch} | tar -x -C "${tmpRemote}"`, root);
+  if (!archiveRemote.ok) {
+    runQuiet(`rm -rf "${tmpRemote}" "${tmpLocal}"`, root);
+    return {
+      content: [{ type: "text", text: `❌ Could not extract remote tree for \`${name}\`\n\`\`\`\n${archiveRemote.stderr}\n\`\`\`` }],
+      details: { error: true, name, step: "archive_remote" },
+    };
+  }
+
+  // Extract local package dir
+  runQuiet(`git archive HEAD -- ${prefix}/${name} | tar -x -C "${tmpLocal}"`, root);
+
+  // Compare
+  const diffResult = run(`diff -rq "${tmpLocal}/${prefix}/${name}" "${tmpRemote}" 2>&1 || true`, root);
+  runQuiet(`rm -rf "${tmpRemote}" "${tmpLocal}"`, root);
+
+  if (diffResult.stdout.trim() === "" || !diffResult.ok) {
+    if (diffResult.stdout.trim() === "") {
+      return {
+        content: [{ type: "text", text: `✅ \`${name}\` is already up to date` }],
+        details: { success: true, name, branch, org, changes: 0 },
+      };
+    }
+  }
+
+  // Apply changes: extract remote tree over the local package directory
+  const extractResult = run(`git archive ${remoteSetup.remote}/${branch} | tar -x -C "${pkgDir}"`, root);
+  if (!extractResult.ok) {
+    return {
+      content: [{ type: "text", text: `❌ Could not extract remote tree into \`${prefix}/${name}\`\n\`\`\`\n${extractResult.stderr}\n\`\`\`` }],
+      details: { error: true, name, step: "extract" },
+    };
+  }
+
+  // Stage changes
+  run(`git add "${prefix}/${name}/"`, root);
+  const staged = run(`git diff --cached --stat`, root);
+
+  if (!staged.stdout.trim()) {
+    return {
+      content: [{ type: "text", text: `✅ \`${name}\` is already up to date (no content changes)` }],
+      details: { success: true, name, branch, org, changes: 0 },
+    };
+  }
+
+  const changeLines = staged.stdout.trim().split("\n").length;
   return {
     content: [{
       type: "text",
-      text: `✅ Pulled ${pkg} changes from ${ORG}/${pkg} (${branch})${squash ? " [squashed]" : ""}\n\n${pullResult.stdout}`,
+      text: [
+        `✅ Pulled \`${name}\` from \`${org}/${name}\` (${branch})`,
+        "",
+        "Changed files:",
+        "```",
+        staged.stdout.trim(),
+        "```",
+        "",
+        "Changes are staged but **not committed**. Review and commit:",
+        "```bash",
+        `git commit -m "sync(${name}): pull from ${org}/${name}"`,
+        "```",
+      ].join("\n"),
     }],
-    details: { success: true, package: pkg, branch, squash },
+    details: { success: true, name, branch, org, changes: changeLines, staged: true },
   };
 }
 
 /**
- * git_package_init — Initialize a new GitHub repo for a package
+ * git_init — Initialize a new GitHub repo for a subdirectory or standalone project
  */
-async function packageInit(params: {
-  package: string;
+async function gitInit(params: {
+  name?: string;
+  org?: string;
+  prefix?: string;
+  mode?: "subtree" | "standalone";
   private?: boolean;
   description?: string;
   cwd?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; details: any }> {
-  const root = findMonorepoRoot(params.cwd) || process.cwd();
-  const pkg = params.package;
-  const visibility = params.private ? "private" : "public";
-  const description = params.description || `Pi package: ${pkg}`;
-  const pkgDir = join(root, PACKAGES_DIR, pkg);
+  const root = findGitRoot(params.cwd) || process.cwd();
+  const config = resolveConfig(root, params);
+  const { org, prefix, remotePrefix, defaultBranch, visibility, mode } = config;
+  const vis = params.private ? "private" : visibility;
 
-  if (!existsSync(pkgDir)) {
+  // Standalone mode — init git + create GitHub repo + push
+  if (mode === "standalone") {
+    const name = params.name || root.split("/").pop() || "unnamed";
+    const desc = params.description || name;
+
+    // Check if already a git repo
+    if (!existsSync(join(root, ".git"))) {
+      run("git init", root);
+      run("git add .", root);
+      run(`git commit -m "Initial commit"`, root);
+    }
+
+    // Check if GitHub repo exists
+    if (repoExists(org, name)) {
+      return {
+        content: [{ type: "text", text: `ℹ️ Repo \`${org}/${name}\` already exists.\n\nUse \`git_push\` to sync.` }],
+        details: { name, existing: true, org },
+      };
+    }
+
+    // Create repo
+    const createResult = run(`gh repo create ${org}/${name} --${vis} --description "${desc}" 2>&1`, root);
+    if (!createResult.ok) {
+      return {
+        content: [{ type: "text", text: `❌ Failed to create GitHub repo: ${createResult.stderr}` }],
+        details: { error: true, name, step: "create_repo" },
+      };
+    }
+
+    // Add origin remote and push
+    const remoteUrl = `https://github.com/${org}/${name}.git`;
+    const existingOrigin = runQuiet("git remote get-url origin", root);
+    if (!existingOrigin) {
+      run(`git remote add origin ${remoteUrl}`, root);
+    }
+    run(`git push -u origin ${defaultBranch}`, root);
+
     return {
-      content: [{ type: "text", text: `❌ Package directory not found: ${PACKAGES_DIR}/${pkg}` }],
-      details: { error: true, package: pkg },
+      content: [{ type: "text", text: `✅ Initialized \`${org}/${name}\` (${vis})\n\n- Remote: \`${remoteUrl}\`\n- Branch: \`${defaultBranch}\`` }],
+      details: { success: true, name, org, url: `https://github.com/${org}/${name}`, visibility: vis },
     };
   }
 
-  // Check if repo already exists
-  if (repoExists(pkg)) {
-    const remoteSetup = ensureRemote(root, pkg);
+  // Subtree mode
+  const name = params.name;
+  if (!name) {
+    return {
+      content: [{ type: "text", text: "❌ `name` is required in subtree mode" }],
+      details: { error: true, mode: "subtree" },
+    };
+  }
+
+  const pkgDir = join(root, prefix, name);
+  if (!existsSync(pkgDir)) {
+    return {
+      content: [{ type: "text", text: `❌ Directory not found: \`${prefix}/${name}\`` }],
+      details: { error: true, name },
+    };
+  }
+
+  const desc = params.description || getPackageName(pkgDir) || name;
+
+  // Already exists?
+  if (repoExists(org, name)) {
+    const remoteSetup = ensureRemote(root, name, org, remotePrefix);
     return {
       content: [{
         type: "text",
-        text: `ℹ️ Repo ${ORG}/${pkg} already exists.\nRemote: ${remoteSetup.ok ? `✅ ${remoteSetup.remote} → ${remoteSetup.url}` : "⚠️ not configured locally"}\n\nUse \`git_package_push\` to sync content.`,
+        text: `ℹ️ Repo \`${org}/${name}\` already exists.\nRemote: ${remoteSetup.ok ? `✅ \`${remoteSetup.remote} → ${remoteSetup.url}\`` : "⚠️ not configured"}\n\nUse \`git_push\` to sync.`,
       }],
-      details: { package: pkg, existing: true, remote: remoteSetup },
+      details: { name, existing: true, remote: remoteSetup },
     };
   }
 
   // Create GitHub repo
-  const createResult = run(
-    `gh repo create ${ORG}/${pkg} --${visibility} --description "${description}" 2>&1`,
-    root
-  );
+  const createResult = run(`gh repo create ${org}/${name} --${vis} --description "${desc}" 2>&1`, root);
   if (!createResult.ok) {
     return {
       content: [{ type: "text", text: `❌ Failed to create GitHub repo: ${createResult.stderr}` }],
-      details: { error: true, package: pkg, step: "create_repo" },
+      details: { error: true, name, step: "create_repo" },
     };
   }
 
   // Add remote
-  const remoteSetup = ensureRemote(root, pkg);
+  const remoteSetup = ensureRemote(root, name, org, remotePrefix);
 
-  // Initial subtree push
-  const pushResult = run(
-    `git subtree push --prefix=${PACKAGES_DIR}/${pkg} ${remoteSetup.remote} main 2>&1`,
-    root
-  );
+  // Initial push
+  const pushResult = run(`git subtree push --prefix=${prefix}/${name} ${remoteSetup.remote} ${defaultBranch} 2>&1`, root);
 
-  const lines: string[] = [
-    `✅ Initialized ${pkg}`,
+  const lines = [
+    `✅ Initialized \`${name}\``,
     "",
     `| Step | Status |`,
     `|------|--------|`,
-    `| GitHub repo | ✅ ${ORG}/${pkg} (${visibility}) |`,
-    `| Git remote | ${remoteSetup.ok ? "✅" : "❌"} ${remoteSetup.remote} |`,
-    `| Initial push | ${pushResult.ok ? "✅" : "⚠️ (may need manual push)"} |`,
+    `| GitHub repo | ✅ \`${org}/${name}\` (${vis}) |`,
+    `| Git remote | ${remoteSetup.ok ? "✅" : "❌"} \`${remoteSetup.remote}\` |`,
+    `| Initial push | ${pushResult.ok ? "✅" : "⚠️"} |`,
     "",
-    pushResult.ok ? "Content pushed to individual repo." : "Push failed — run `git_package_push` manually.",
+    pushResult.ok ? "Content pushed." : "Push failed — run `git_push` manually.",
   ];
 
   return {
     content: [{ type: "text", text: lines.join("\n") }],
     details: {
       success: true,
-      package: pkg,
-      repoUrl: `https://github.com/${ORG}/${pkg}`,
+      name,
+      org,
+      repoUrl: `https://github.com/${org}/${name}`,
       remote: remoteSetup.remote,
       pushed: pushResult.ok,
     },
@@ -460,32 +756,36 @@ async function packageInit(params: {
 }
 
 /**
- * git_issue — Create or list GitHub issues on a package repo
+ * git_issue — List or create GitHub issues
  */
-async function packageIssue(params: {
-  package: string;
+async function gitIssue(params: {
+  repo: string;
+  org?: string;
   action?: "list" | "create";
   title?: string;
   body?: string;
   labels?: string[];
-  cwd?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; details: any }> {
-  const { package: pkg } = params;
+  const root = findGitRoot() || process.cwd();
+  const config = resolveConfig(root, params);
+  const { org } = config;
+  const { repo } = params;
   const action = params.action || (params.title ? "create" : "list");
+  const fullName = `${org}/${repo}`;
 
-  if (!repoExists(pkg)) {
+  if (!repoExists(org, repo)) {
     return {
-      content: [{ type: "text", text: `❌ GitHub repo ${ORG}/${pkg} does not exist. Use \`git_package_init\` first.` }],
-      details: { error: true, package: pkg },
+      content: [{ type: "text", text: `❌ Repo \`${fullName}\` does not exist. Use \`git_init\` first.` }],
+      details: { error: true, repo, org },
     };
   }
 
   if (action === "list") {
-    const result = run(`gh issue list --repo ${ORG}/${pkg} --limit 20 --json number,title,labels,state,createdAt`);
+    const result = run(`gh issue list --repo ${fullName} --limit 20 --json number,title,labels,state`);
     if (!result.ok) {
       return {
         content: [{ type: "text", text: `❌ Failed to list issues: ${result.stderr}` }],
-        details: { error: true, package: pkg },
+        details: { error: true, repo: fullName },
       };
     }
 
@@ -493,12 +793,12 @@ async function packageIssue(params: {
       const issues = JSON.parse(result.stdout);
       if (issues.length === 0) {
         return {
-          content: [{ type: "text", text: `No open issues on ${ORG}/${pkg}` }],
-          details: { package: pkg, issues: [] },
+          content: [{ type: "text", text: `No open issues on \`${fullName}\`` }],
+          details: { repo: fullName, issues: [] },
         };
       }
 
-      const lines: string[] = [`## Issues on ${ORG}/${pkg}\n`];
+      const lines = [`## Issues on \`${fullName}\`\n`];
       for (const issue of issues) {
         const labelStr = issue.labels?.map((l: any) => `\`${l.name}\``).join(" ") || "";
         lines.push(`- #${issue.number} ${issue.title} ${labelStr}`);
@@ -506,17 +806,17 @@ async function packageIssue(params: {
 
       return {
         content: [{ type: "text", text: lines.join("\n") }],
-        details: { package: pkg, issues },
+        details: { repo: fullName, issues },
       };
     } catch {
       return {
         content: [{ type: "text", text: `Raw output:\n${result.stdout}` }],
-        details: { package: pkg, raw: result.stdout },
+        details: { repo: fullName, raw: result.stdout },
       };
     }
   }
 
-  // Create issue
+  // Create
   if (!params.title) {
     return {
       content: [{ type: "text", text: "❌ `title` is required for creating an issue" }],
@@ -527,50 +827,52 @@ async function packageIssue(params: {
   const labelFlag = params.labels?.length ? ` --label "${params.labels.join(",")}"` : "";
   const bodyFlag = params.body ? ` --body "${params.body.replace(/"/g, '\\"')}"` : "";
 
-  const result = run(
-    `gh issue create --repo ${ORG}/${pkg} --title "${params.title}"${bodyFlag}${labelFlag}`,
-  );
+  const result = run(`gh issue create --repo ${fullName} --title "${params.title}"${bodyFlag}${labelFlag}`);
   if (!result.ok) {
     return {
       content: [{ type: "text", text: `❌ Failed to create issue: ${result.stderr}` }],
-      details: { error: true, package: pkg, step: "create" },
+      details: { error: true, repo: fullName },
     };
   }
 
   return {
-    content: [{ type: "text", text: `✅ Created issue on ${ORG}/${pkg}\n\n${result.stdout}` }],
-    details: { success: true, package: pkg, url: result.stdout },
+    content: [{ type: "text", text: `✅ Created issue on \`${fullName}\`\n\n${result.stdout}` }],
+    details: { success: true, repo: fullName, url: result.stdout },
   };
 }
 
 /**
- * git_pr — Create or list PRs on a package repo
+ * git_pr — List or create pull requests
  */
-async function packagePR(params: {
-  package: string;
+async function gitPR(params: {
+  repo: string;
+  org?: string;
   action?: "list" | "create";
   title?: string;
   body?: string;
   head?: string;
   base?: string;
-  cwd?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; details: any }> {
-  const { package: pkg } = params;
+  const root = findGitRoot() || process.cwd();
+  const config = resolveConfig(root, params);
+  const { org, defaultBranch } = config;
+  const { repo } = params;
   const action = params.action || (params.title ? "create" : "list");
+  const fullName = `${org}/${repo}`;
 
-  if (!repoExists(pkg)) {
+  if (!repoExists(org, repo)) {
     return {
-      content: [{ type: "text", text: `❌ GitHub repo ${ORG}/${pkg} does not exist. Use \`git_package_init\` first.` }],
-      details: { error: true, package: pkg },
+      content: [{ type: "text", text: `❌ Repo \`${fullName}\` does not exist. Use \`git_init\` first.` }],
+      details: { error: true, repo, org },
     };
   }
 
   if (action === "list") {
-    const result = run(`gh pr list --repo ${ORG}/${pkg} --limit 20 --json number,title,headRefName,state,createdAt`);
+    const result = run(`gh pr list --repo ${fullName} --limit 20 --json number,title,headRefName,state`);
     if (!result.ok) {
       return {
         content: [{ type: "text", text: `❌ Failed to list PRs: ${result.stderr}` }],
-        details: { error: true, package: pkg },
+        details: { error: true, repo: fullName },
       };
     }
 
@@ -578,29 +880,29 @@ async function packagePR(params: {
       const prs = JSON.parse(result.stdout);
       if (prs.length === 0) {
         return {
-          content: [{ type: "text", text: `No open PRs on ${ORG}/${pkg}` }],
-          details: { package: pkg, prs: [] },
+          content: [{ type: "text", text: `No open PRs on \`${fullName}\`` }],
+          details: { repo: fullName, prs: [] },
         };
       }
 
-      const lines: string[] = [`## Pull Requests on ${ORG}/${pkg}\n`];
+      const lines = [`## Pull Requests on \`${fullName}\`\n`];
       for (const pr of prs) {
         lines.push(`- #${pr.number} ${pr.title} (\`${pr.headRefName}\`)`);
       }
 
       return {
         content: [{ type: "text", text: lines.join("\n") }],
-        details: { package: pkg, prs },
+        details: { repo: fullName, prs },
       };
     } catch {
       return {
         content: [{ type: "text", text: `Raw output:\n${result.stdout}` }],
-        details: { package: pkg, raw: result.stdout },
+        details: { repo: fullName, raw: result.stdout },
       };
     }
   }
 
-  // Create PR
+  // Create
   if (!params.title) {
     return {
       content: [{ type: "text", text: "❌ `title` is required for creating a PR" }],
@@ -608,36 +910,34 @@ async function packagePR(params: {
     };
   }
 
-  const baseFlag = params.base ? ` --base ${params.base}` : " --base main";
+  const baseFlag = params.base ? ` --base ${params.base}` : ` --base ${defaultBranch}`;
   const headFlag = params.head ? ` --head ${params.head}` : "";
   const bodyFlag = params.body ? ` --body "${params.body.replace(/"/g, '\\"')}"` : "";
 
-  const result = run(
-    `gh pr create --repo ${ORG}/${pkg} --title "${params.title}"${bodyFlag}${baseFlag}${headFlag}`,
-  );
+  const result = run(`gh pr create --repo ${fullName} --title "${params.title}"${bodyFlag}${baseFlag}${headFlag}`);
   if (!result.ok) {
     return {
       content: [{ type: "text", text: `❌ Failed to create PR: ${result.stderr}` }],
-      details: { error: true, package: pkg, step: "create" },
+      details: { error: true, repo: fullName },
     };
   }
 
   return {
-    content: [{ type: "text", text: `✅ Created PR on ${ORG}/${pkg}\n\n${result.stdout}` }],
-    details: { success: true, package: pkg, url: result.stdout },
+    content: [{ type: "text", text: `✅ Created PR on \`${fullName}\`\n\n${result.stdout}` }],
+    details: { success: true, repo: fullName, url: result.stdout },
   };
 }
 
 /**
- * git_worktree — Manage git worktrees for isolated package work
+ * git_worktree — Manage git worktrees
  */
-async function packageWorktree(params: {
+async function gitWorktree(params: {
   action: "list" | "add" | "remove";
-  package?: string;
+  name?: string;
   branch?: string;
   cwd?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; details: any }> {
-  const root = findMonorepoRoot(params.cwd) || process.cwd();
+  const root = findGitRoot(params.cwd) || process.cwd();
   const { action } = params;
 
   if (action === "list") {
@@ -651,7 +951,6 @@ async function packageWorktree(params: {
 
     const lines = result.stdout.split("\n").filter(Boolean);
     const formatted = lines.map((line) => {
-      // Format: /path/to/dir  abc1234 [branch]
       const parts = line.split(/\s+/);
       return `| ${parts.slice(0, 3).join(" | ")} |`;
     });
@@ -666,26 +965,25 @@ async function packageWorktree(params: {
   }
 
   if (action === "add") {
-    const pkg = params.package;
-    if (!pkg) {
+    const name = params.name;
+    if (!name) {
       return {
-        content: [{ type: "text", text: "❌ `package` is required for add action" }],
+        content: [{ type: "text", text: "❌ `name` is required for add action" }],
         details: { error: true },
       };
     }
 
-    const branch = params.branch || `${pkg}-work`;
-    const worktreePath = join(root, ".worktrees", pkg);
+    const branch = params.branch || `${name}-work`;
+    const worktreePath = join(root, ".worktrees", name);
 
-    // Create worktree
     const addResult = run(`git worktree add -b ${branch} ${worktreePath} 2>&1`, root);
     if (!addResult.ok) {
-      // Branch might already exist — try without creating new branch
+      // Branch might already exist
       const addResult2 = run(`git worktree add ${worktreePath} ${branch} 2>&1`, root);
       if (!addResult2.ok) {
         return {
-          content: [{ type: "text", text: `❌ Failed to create worktree: ${addResult.stderr}\n${addResult2.stderr}` }],
-          details: { error: true, package: pkg, step: "add" },
+          content: [{ type: "text", text: `❌ Failed to create worktree:\n${addResult.stderr}\n${addResult2.stderr}` }],
+          details: { error: true, name },
         };
       }
     }
@@ -693,44 +991,43 @@ async function packageWorktree(params: {
     return {
       content: [{
         type: "text",
-        text: `✅ Created worktree for **${pkg}**\n\n- Branch: \`${branch}\`\n- Path: \`${worktreePath}\`\n\n\`\`\`bash\ncd ${worktreePath}\n# Work on ${pkg} in isolation\ngit worktree remove ${worktreePath}  # When done\n\`\`\``,
+        text: `✅ Created worktree for **${name}**\n\n- Branch: \`${branch}\`\n- Path: \`${worktreePath}\`\n\n\`\`\`bash\ncd ${worktreePath}\ngit worktree remove ${worktreePath}  # When done\n\`\`\``,
       }],
-      details: { success: true, package: pkg, branch, path: worktreePath },
+      details: { success: true, name, branch, path: worktreePath },
     };
   }
 
   if (action === "remove") {
-    const pkg = params.package;
-    if (!pkg) {
+    const name = params.name;
+    if (!name) {
       return {
-        content: [{ type: "text", text: "❌ `package` is required for remove action" }],
+        content: [{ type: "text", text: "❌ `name` is required for remove action" }],
         details: { error: true },
       };
     }
 
-    const worktreePath = join(root, ".worktrees", pkg);
+    const worktreePath = join(root, ".worktrees", name);
     if (!existsSync(worktreePath)) {
       return {
         content: [{ type: "text", text: `❌ Worktree not found at ${worktreePath}` }],
-        details: { error: true, package: pkg },
+        details: { error: true, name },
       };
     }
 
     const removeResult = run(`git worktree remove ${worktreePath} 2>&1`, root);
     if (!removeResult.ok) {
-      // Force remove if dirty
       const forceResult = run(`git worktree remove --force ${worktreePath} 2>&1`, root);
       if (!forceResult.ok) {
         return {
           content: [{ type: "text", text: `❌ Failed to remove worktree: ${removeResult.stderr}` }],
-          details: { error: true, package: pkg },
+          details: { error: true, name },
         };
       }
     }
 
     return {
-      content: [{ type: "text", text: `✅ Removed worktree for **${pkg}**` }],
-      details: { success: true, package: pkg },
+      content: [{ type: "text", text: `✅ Removed worktree for **${name}**` }],
+      details: { success: true, name },
     };
   }
 
@@ -745,154 +1042,142 @@ async function packageWorktree(params: {
 // ============================================================================
 
 export function registerGitPackageSyncTools(pi: ExtensionAPI): void {
-  // git_package_status
+  // Common config schema fragment — included via spread in each tool
+  const configProps = {
+    org: Type.Optional(Type.String({ description: "GitHub org or user (auto-detected from git remotes if omitted)" })),
+    prefix: Type.Optional(Type.String({ description: "Monorepo subdirectory prefix, e.g. 'packages' or 'libs' (default: 'packages')" })),
+    pattern: Type.Optional(Type.String({ description: "Glob pattern for subdirectories, e.g. 'pi-*' or '*' (default: '*')" })),
+    mode: Type.Optional(Type.Union([Type.Literal("subtree"), Type.Literal("standalone")], { description: "Mode: subtree for monorepo prefix sync, standalone for single repo (auto-detected)" })),
+  };
+
   pi.registerTool({
     name: "git_package_status",
-    label: "Package Sync Status",
-    description: "Show sync status of all pi-packages between monorepo and individual GitHub repos. Detects drift, missing repos, and unconfigured remotes.",
+    label: "Git Sync Status",
+    description: "Show sync status of subdirectories (subtree mode) or the current repo (standalone mode). Detects drift, missing repos, and unconfigured remotes. Config auto-detected from git remotes, .git-sync.json, or params.",
     parameters: Type.Object({
-      package: Type.Optional(Type.String({ description: "Specific package to check (e.g. 'pi-gateway'). Omit for all." })),
-      cwd: Type.Optional(Type.String({ description: "Monorepo root directory (auto-detected if omitted)" })),
+      name: Type.Optional(Type.String({ description: "Specific subdirectory to check. Omit for all." })),
+      ...configProps,
+      cwd: Type.Optional(Type.String({ description: "Project root directory (auto-detected if omitted)" })),
     }),
     async execute(toolCallId, params, signal, onUpdate, ctx) {
-      return packageStatus({
-        package: params.package,
+      return gitStatus({
+        ...params,
         cwd: params.cwd || ctx?.cwd,
       });
     },
   });
 
-  // git_package_push
   pi.registerTool({
     name: "git_package_push",
-    label: "Push Package to Individual Repo",
-    description: "Push a pi-package from the monorepo to its individual GitHub repo using git subtree. Creates the repo if it doesn't exist.",
+    label: "Push to GitHub",
+    description: "Push a subdirectory (subtree mode) or the current repo (standalone mode) to GitHub. Creates the GitHub repo if it doesn't exist. Uses git subtree in subtree mode, plain git push in standalone mode.",
     parameters: Type.Object({
-      package: Type.String({ description: "Package name (e.g. 'pi-gateway')" }),
+      name: Type.Optional(Type.String({ description: "Subdirectory name to push (required in subtree mode, e.g. 'pi-gateway')" })),
       branch: Type.Optional(Type.String({ description: "Branch to push to (default: main)" })),
       force: Type.Optional(Type.Boolean({ description: "Force push even if diverged (default: false)" })),
-      cwd: Type.Optional(Type.String({ description: "Monorepo root directory" })),
+      remote: Type.Optional(Type.String({ description: "Remote name for standalone mode (default: origin)" })),
+      ...configProps,
+      cwd: Type.Optional(Type.String({ description: "Project root directory" })),
     }),
     async execute(toolCallId, params, signal, onUpdate, ctx) {
-      return packagePush({
-        package: params.package,
-        branch: params.branch,
-        force: params.force,
+      return gitPush({
+        ...params,
         cwd: params.cwd || ctx?.cwd,
       });
     },
   });
 
-  // git_package_pull
   pi.registerTool({
     name: "git_package_pull",
-    label: "Pull Package from Individual Repo",
-    description: "Pull changes from a package's individual GitHub repo into the monorepo using git subtree pull.",
+    label: "Pull from GitHub",
+    description: "Pull changes from GitHub into a subdirectory (content-based sync) or the current repo (standalone, git pull). Content-based pull avoids the 'unrelated histories' problem that git subtree pull creates.",
     parameters: Type.Object({
-      package: Type.String({ description: "Package name (e.g. 'pi-gateway')" }),
+      name: Type.Optional(Type.String({ description: "Subdirectory name to pull (required in subtree mode)" })),
       branch: Type.Optional(Type.String({ description: "Branch to pull from (default: main)" })),
-      squash: Type.Optional(Type.Boolean({ description: "Squash subtree pull (default: true)" })),
-      cwd: Type.Optional(Type.String({ description: "Monorepo root directory" })),
+      squash: Type.Optional(Type.Boolean({ description: "Squash subtree pull (default: true, subtree mode only)" })),
+      remote: Type.Optional(Type.String({ description: "Remote name for standalone mode (default: origin)" })),
+      ...configProps,
+      cwd: Type.Optional(Type.String({ description: "Project root directory" })),
     }),
     async execute(toolCallId, params, signal, onUpdate, ctx) {
-      return packagePull({
-        package: params.package,
-        branch: params.branch,
-        squash: params.squash,
+      return gitPull({
+        ...params,
         cwd: params.cwd || ctx?.cwd,
       });
     },
   });
 
-  // git_package_init
   pi.registerTool({
     name: "git_package_init",
-    label: "Initialize Package Repo",
-    description: "Create a new GitHub repo for a pi-package, add the git remote, and push initial content via subtree.",
+    label: "Initialize GitHub Repo",
+    description: "Create a new GitHub repo for a subdirectory (subtree mode) or standalone project. Adds git remote and pushes initial content.",
     parameters: Type.Object({
-      package: Type.String({ description: "Package name (e.g. 'pi-mymodule')" }),
-      private: Type.Optional(Type.Boolean({ description: "Create as private repo (default: false)" })),
+      name: Type.Optional(Type.String({ description: "Project/subdirectory name (required in subtree mode; defaults to directory name in standalone mode)" })),
+      private: Type.Optional(Type.Boolean({ description: "Create as private repo (default: from config or public)" })),
       description: Type.Optional(Type.String({ description: "Repo description" })),
-      cwd: Type.Optional(Type.String({ description: "Monorepo root directory" })),
+      ...configProps,
+      cwd: Type.Optional(Type.String({ description: "Project root directory" })),
     }),
     async execute(toolCallId, params, signal, onUpdate, ctx) {
-      return packageInit({
-        package: params.package,
-        private: params.private,
-        description: params.description,
+      return gitInit({
+        ...params,
         cwd: params.cwd || ctx?.cwd,
       });
     },
   });
 
-  // git_issue
   pi.registerTool({
     name: "git_issue",
-    label: "Manage Package Issues",
-    description: "List or create GitHub issues on a pi-package's individual repo.",
+    label: "Manage GitHub Issues",
+    description: "List or create GitHub issues on any repo. Org auto-detected from git remotes or config.",
     parameters: Type.Object({
-      package: Type.String({ description: "Package name (e.g. 'pi-gateway')" }),
+      repo: Type.String({ description: "Repository name (e.g. 'pi-gateway', 'my-app')" }),
       action: Type.Optional(Type.Union([Type.Literal("list"), Type.Literal("create")], { description: "Action: list or create (default: list unless title is provided)" })),
       title: Type.Optional(Type.String({ description: "Issue title (required for create)" })),
       body: Type.Optional(Type.String({ description: "Issue body (markdown)" })),
       labels: Type.Optional(Type.Array(Type.String(), { description: "Labels to apply" })),
+      org: Type.Optional(Type.String({ description: "GitHub org (auto-detected if omitted)" })),
     }),
     async execute(toolCallId, params, signal, onUpdate, ctx) {
-      return packageIssue({
-        package: params.package,
-        action: params.action,
-        title: params.title,
-        body: params.body,
-        labels: params.labels,
-      });
+      return gitIssue(params);
     },
   });
 
-  // git_pr
   pi.registerTool({
     name: "git_pr",
-    label: "Manage Package PRs",
-    description: "List or create pull requests on a pi-package's individual GitHub repo.",
+    label: "Manage GitHub PRs",
+    description: "List or create pull requests on any repo. Org auto-detected from git remotes or config.",
     parameters: Type.Object({
-      package: Type.String({ description: "Package name (e.g. 'pi-gateway')" }),
+      repo: Type.String({ description: "Repository name (e.g. 'pi-gateway', 'my-app')" }),
       action: Type.Optional(Type.Union([Type.Literal("list"), Type.Literal("create")], { description: "Action: list or create (default: list unless title is provided)" })),
       title: Type.Optional(Type.String({ description: "PR title (required for create)" })),
       body: Type.Optional(Type.String({ description: "PR body (markdown)" })),
       head: Type.Optional(Type.String({ description: "Head branch for the PR" })),
       base: Type.Optional(Type.String({ description: "Base branch (default: main)" })),
+      org: Type.Optional(Type.String({ description: "GitHub org (auto-detected if omitted)" })),
     }),
     async execute(toolCallId, params, signal, onUpdate, ctx) {
-      return packagePR({
-        package: params.package,
-        action: params.action,
-        title: params.title,
-        body: params.body,
-        head: params.head,
-        base: params.base,
-      });
+      return gitPR(params);
     },
   });
 
-  // git_worktree
   pi.registerTool({
     name: "git_worktree",
     label: "Manage Git Worktrees",
-    description: "Manage git worktrees for isolated package development. List, add, or remove worktrees.",
+    description: "Manage git worktrees for isolated development. List, add, or remove worktrees in any git repo.",
     parameters: Type.Object({
       action: Type.Union([Type.Literal("list"), Type.Literal("add"), Type.Literal("remove")], { description: "Action: list, add, or remove" }),
-      package: Type.Optional(Type.String({ description: "Package name (required for add/remove)" })),
-      branch: Type.Optional(Type.String({ description: "Branch name for worktree (default: <package>-work)" })),
-      cwd: Type.Optional(Type.String({ description: "Monorepo root directory (auto-detected if omitted)" })),
+      name: Type.Optional(Type.String({ description: "Worktree name (required for add/remove)" })),
+      branch: Type.Optional(Type.String({ description: "Branch name for worktree (default: <name>-work)" })),
+      cwd: Type.Optional(Type.String({ description: "Git root directory" })),
     }),
     async execute(toolCallId, params, signal, onUpdate, ctx) {
-      return packageWorktree({
-        action: params.action,
-        package: params.package,
-        branch: params.branch,
-        cwd: params.cwd,
+      return gitWorktree({
+        ...params,
+        cwd: params.cwd || ctx?.cwd,
       });
     },
   });
 
-  console.log("[pi-kobold] Git package sync tools registered (6 tools)");
+  console.log("[pi-kobold] Git sync tools registered (7 tools)");
 }
