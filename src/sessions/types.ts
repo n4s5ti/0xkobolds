@@ -5,7 +5,11 @@
  * Sessions survive restarts with stable IDs and track complete lifecycle.
  */
 
-import type { AgentStatus, AgentType } from "../gateway/persistence/AgentStore.js";
+// Agent types (previously imported from gateway/persistence/AgentStore)
+export type AgentStatus = "idle" | "running" | "completed" | "error";
+export type AgentType = "primary" | "orchestrator" | "worker";
+
+
 
 // ============================================================================
 // Core Session Types

@@ -477,7 +477,6 @@ Project-specific context goes here.
       console.log(`\n\n🚀 Quick Start:`);
       console.log(`   0xkobold chat                 # Chat with ${agentName}`);
       console.log("   0xkobold gateway start        # Start web gateway");
-      console.log("   0xkobold daemon               # Start background daemon");
       console.log("\n🎭 Manage persona:");
       console.log("   0xkobold persona list         # List persona files");
       console.log("   0xkobold persona show         # View all personas");

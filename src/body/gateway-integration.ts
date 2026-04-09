@@ -8,8 +8,6 @@
  */
 
 import { getAgentBody, type AgentBodySystem, type AgentBodyState } from './init';
-import type { RealGatewayServer } from '../gateway/gateway-server';
-import type { DeliverySystem } from '../gateway/delivery';
 
 let bodySystem: AgentBodySystem | null = null;
 let stateBroadcastInterval: Timer | null = null;
@@ -43,16 +41,16 @@ const DEFAULT_CONFIG: BodyGatewayConfig = {
  * Initialize Agent Body and connect to Gateway
  * 
  * Call this during gateway startup:
- * ```typescript
- * // In gateway-server.ts or startup
+ * ```
+ * // In startup
  * import { initializeBodyGateway } from './body/gateway-integration';
  * 
- * await initializeBodyGateway(gateway, delivery, config);
+ * await initializeBodyGateway({ broadcast: (data) => ... }, delivery, config);
  * ```
  */
 export async function initializeBodyGateway(
-  gateway: RealGatewayServer,
-  delivery: DeliverySystem,
+  gateway: { broadcast: (data: unknown) => void },
+  delivery: { queueDelivery: (content: string, target?: unknown, options?: Record<string, unknown>) => unknown },
   config: BodyGatewayConfig = {}
 ): Promise<AgentBodySystem> {
   const cfg = { ...DEFAULT_CONFIG, ...config };

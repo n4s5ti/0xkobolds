@@ -7,6 +7,7 @@
       "dependencies": {
         "@0xkobold/pi-bridge": "./packages/pi-bridge",
         "@0xkobold/pi-cloudflare-browser": "^0.1.0",
+        "@0xkobold/pi-gateway": "0.6.0",
         "@0xkobold/pi-kobold": "./packages/pi-kobold",
         "@0xkobold/pi-learn": "^0.2.2",
         "@0xkobold/pi-mcp": "./packages/pi-mcp",
@@ -64,6 +65,8 @@
     "@0xkobold/pi-bridge": ["@0xkobold/pi-bridge@file:packages/pi-bridge", { "devDependencies": { "@types/bun": "latest", "typescript": "^5.0.0" }, "peerDependencies": { "@mariozechner/pi-coding-agent": ">=0.62.0", "@sinclair/typebox": ">=0.32.0" } }],
 
     "@0xkobold/pi-cloudflare-browser": ["@0xkobold/pi-cloudflare-browser@0.1.0", "", { "peerDependencies": { "@mariozechner/pi-coding-agent": ">=0.57.0", "@sinclair/typebox": ">=0.32.0" } }, "sha512-KwpuurJ5luCb/m1p3Q9SFTypEJ29aAaNJvWjC9wSVvC2ZZWFN62umAPD5byudpE91MjhABNCflsBmSJCEwYAXw=="],
+
+    "@0xkobold/pi-gateway": ["@0xkobold/pi-gateway@0.6.0", "", { "dependencies": { "sql.js": "^1.14.1", "ws": "^8.18.0" }, "peerDependencies": { "@mariozechner/pi-coding-agent": ">=0.65.0", "@sinclair/typebox": ">=0.32.0" } }, "sha512-NcSuR+46Ro3HZ4V+2BIql0GlwFj3GyeTS+OhsDMUCKOs0BeO832fc6IMFfCkJtbqPCHXWpRkYNQf96oTM1Ldeg=="],
 
     "@0xkobold/pi-kobold": ["@0xkobold/pi-kobold@file:packages/pi-kobold", { "dependencies": { "@0xkobold/pi-gateway": "../pi-gateway", "@0xkobold/pi-orchestration": "../pi-orchestration" }, "devDependencies": { "@types/bun": "latest", "@types/node": "^20.0.0", "typescript": "^5.0.0" }, "peerDependencies": { "@mariozechner/pi-coding-agent": ">=0.65.0", "@sinclair/typebox": ">=0.32.0" } }],
 

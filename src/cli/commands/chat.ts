@@ -5,7 +5,7 @@ import { createInterface } from "node:readline";
 const client = new KoboldClient();
 
 const sendCommand = new Command("send")
-  .description("Send a message to the daemon")
+  .description("Send a message to the gateway")
   .argument("<message>", "Message to send")
   .option("-s, --session <id>", "Session ID")
   .option("-a, --agent <id>", "Agent ID to use")
@@ -14,7 +14,7 @@ const sendCommand = new Command("send")
     try {
       const connected = await client.connect();
       if (!connected) {
-        console.error("❌ Daemon is not running. Start it with: 0xkobold daemon start");
+        console.error("❌ Gateway is not running. Use /gateway start or 0xkobold start");
         process.exit(1);
       }
 
@@ -49,7 +49,7 @@ const sessionCommand = new Command("session")
         try {
           const connected = await client.connect();
           if (!connected) {
-            console.error("❌ Daemon is not running");
+            console.error("❌ Gateway not connected");
             process.exit(1);
           }
 
@@ -87,7 +87,7 @@ const sessionCommand = new Command("session")
         try {
           const connected = await client.connect();
           if (!connected) {
-            console.error("❌ Daemon is not running");
+            console.error("❌ Gateway not connected");
             process.exit(1);
           }
 
@@ -119,7 +119,7 @@ const historyCommand = new Command("history")
     try {
       const connected = await client.connect();
       if (!connected) {
-        console.error("❌ Daemon is not running");
+        console.error("❌ Gateway not connected");
         process.exit(1);
       }
 
@@ -165,7 +165,7 @@ const interactiveCommand = new Command("interactive")
     try {
       const connected = await client.connect();
       if (!connected) {
-        console.error("❌ Daemon is not running. Start it with: 0xkobold daemon start");
+        console.error("❌ Gateway is not running. Use /gateway start or 0xkobold start");
         rl.close();
         process.exit(1);
       }

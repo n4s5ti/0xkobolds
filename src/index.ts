@@ -20,7 +20,6 @@ import { resolve, dirname, join } from 'path';
 import { homedir } from 'os';
 import { existsSync } from 'fs';
 import { readFile } from 'fs/promises';
-import { startGateway } from './gateway/index';
 import { ensureAuthProfilesFromConfig } from './agent/index';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -329,34 +328,36 @@ async function main(): Promise<void> {
   // TUI Mode: Load with all extensions
   const extensions = verifyExtensions();
 
-  // Start Gateway Server (auto-start by default for TUI, skip if disabled)
-  const gatewayPort = parseInt(process.env.KOBOLD_GATEWAY_PORT || '7777', 10);
+  // Start Gateway Server (via pi-gateway programmatic API)
+  const gatewayPort = parseInt(process.env.KOBOLD_GATEWAY_PORT || '3847', 10);
   const gatewayDisabled = process.env.KOBOLD_GATEWAY === '0' || process.env.KOBOLD_GATEWAY === 'false';
   
   if (!gatewayDisabled) {
     try {
-      const { isGatewayRunning } = await import('./gateway/gateway-server');
-      const isRunning = await isGatewayRunning(gatewayPort);
+      const { isGatewayRunning: checkGateway, startGateway: startPiGateway } = await import('@0xkobold/pi-gateway/api');
+      const alreadyRunning = await checkGateway(gatewayPort);
       
-      if (isRunning) {
+      if (alreadyRunning) {
         console.log(`🌐 Gateway detected on port ${gatewayPort} (connected as client)`);
       } else {
-        const { startGateway } = await import('./gateway/index');
-        startGateway({ port: gatewayPort, host: '0.0.0.0' });
-        console.log(`🌐 Gateway started on port ${gatewayPort}`);
+        const status = await startPiGateway({ port: gatewayPort, host: '0.0.0.0', noAgent: true });
+        console.log(`🌐 Gateway started on port ${status.port}`);
       }
 
       // Initialize Agent Body System
       try {
         const { initializeBodyGateway } = await import('./body/gateway-integration');
-        const { getDeliverySystem } = await import('./gateway/delivery');
-        const { getGateway } = await import('./gateway/gateway-server');
+        const { getStatus, broadcast } = await import('@0xkobold/pi-gateway/api');
+        const { getDeliverySystem } = await import('./delivery/index');
         
-        const gateway = getGateway();
         const delivery = getDeliverySystem();
         
-        if (gateway && delivery) {
-          await initializeBodyGateway(gateway, delivery);
+        if (delivery) {
+          // Create a lightweight gateway adapter for body integration
+          const gatewayAdapter = {
+            broadcast: (data: unknown) => broadcast('body-state', data),
+          } as any;
+          await initializeBodyGateway(gatewayAdapter, delivery);
           console.log('🫀 Agent Body initialized');
         }
       } catch (err: any) {

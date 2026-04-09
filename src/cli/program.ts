@@ -23,14 +23,8 @@ import { registerDiscordCli } from "./extensions/discord.js";
 import { registerHeartbeatCli } from "./extensions/heartbeat.js";
 import { registerEnvCli } from "./extensions/env.js";
 
-// v0.2.0: Gateway command
-import { createGatewayCommand } from "./commands/gateway.js";
 
-// v0.3.0: WhatsApp
-import { createWhatsAppCommand } from "./commands/whatsapp.js";
 
-// v0.3.0: Telegram
-import { createTelegramCommand } from "./commands/telegram.js";
 
 // v0.4.0: Cron
 import { cronCommand } from "./commands/cron.js";
@@ -80,14 +74,8 @@ export function createCli(): Command {
   program.addCommand(setupCommand);
   program.addCommand(initCommand);
 
-  // v0.2.0: Gateway server
-  program.addCommand(createGatewayCommand());
   
-  // v0.3.0: WhatsApp integration
-  program.addCommand(createWhatsAppCommand());
   
-  // v0.3.0: Telegram integration
-  program.addCommand(createTelegramCommand());
   
   // v0.3.0: Tailscale VPN
   program.addCommand(createTailscaleCommand());

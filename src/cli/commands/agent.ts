@@ -11,7 +11,7 @@ const listCommand = new Command("list")
     try {
       const connected = await client.connect();
       if (!connected) {
-        console.error("❌ Daemon is not running. Start it with: 0xkobold daemon start");
+        console.error("❌ Gateway not running");
         process.exit(1);
       }
 
@@ -250,7 +250,7 @@ const spawnCommand = new Command("spawn")
     try {
       const connected = await client.connect();
       if (!connected) {
-        console.error("❌ Daemon is not running. Start it with: 0xkobold daemon start");
+        console.error("❌ Gateway not running");
         process.exit(1);
       }
 

@@ -22,7 +22,7 @@ export class KoboldClient {
   private useUnixSocket: boolean;
 
   constructor() {
-    this.socketPath = join(homedir(), ".0xkobold", "daemon.sock");
+    this.socketPath = join(homedir(), ".0xkobold", "gateway.sock");
     this.port = 3456;
     this.host = "localhost";
     this.useUnixSocket = true;
@@ -35,8 +35,8 @@ export class KoboldClient {
       const configPath = join(homedir(), ".0xkobold", "config.json");
       if (existsSync(configPath)) {
         const config = JSON.parse(readFileSync(configPath, "utf-8"));
-        if (config.daemon?.port) this.port = config.daemon.port;
-        if (config.daemon?.host) this.host = config.daemon.host;
+        if (config.gateway?.port) this.port = config.gateway.port;
+        if (config.gateway?.host) this.host = config.gateway.host;
       }
     } catch {
     }
@@ -94,7 +94,7 @@ export class KoboldClient {
   async send(request: KoboldRequest): Promise<KoboldResponse> {
     return new Promise((resolve, reject) => {
       if (!this.socket || !this.socket.writable) {
-        reject(new Error("Not connected to daemon"));
+        reject(new Error("Not connected to gateway"));
         return;
       }
 
@@ -163,7 +163,7 @@ export class KoboldClient {
   ): Promise<KoboldResponse> {
     return new Promise((resolve, reject) => {
       if (!this.socket || !this.socket.writable) {
-        reject(new Error("Not connected to daemon"));
+        reject(new Error("Not connected to gateway"));
         return;
       }
 

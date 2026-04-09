@@ -36,7 +36,7 @@ const COMMANDS: Record<string, { description: string; handler: (args: string[]) 
     }
   },
   status: {
-    description: "Check daemon status",
+    description: "Check gateway status",
     handler: async () => {
       const connected = await client.connect();
       if (connected) {
@@ -47,11 +47,11 @@ const COMMANDS: Record<string, { description: string; handler: (args: string[]) 
           console.log(`  Uptime: ${Math.floor(health.uptime / 60)}m ${health.uptime % 60}s`);
           console.log(`  Status: ${health.status}`);
         } else {
-          console.log("✓ Connected to daemon");
+          console.log("✓ Connected to gateway");
         }
       } else {
         console.log("✗ Daemon is not running");
-        console.log("  Start it with: 0xkobold daemon start");
+        console.log("  Use /gateway start to begin");
       }
     }
   },
@@ -109,9 +109,9 @@ export async function startRepl(): Promise<void> {
   if (!connected) {
     console.log("⚠️  Warning: Daemon is not running");
     console.log("   Some features will be unavailable");
-    console.log("   Start it with: 0xkobold daemon start\n");
+    console.log("   Use /gateway start to begin\n");
   } else {
-    console.log("✓ Connected to daemon\n");
+    console.log("✓ Connected to gateway\n");
   }
 
   const rl = createInterface({
