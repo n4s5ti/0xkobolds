@@ -65,5 +65,9 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/0xKobold/pi-kobold.git"
-  }
+  },
+  "bugs": {
+    "url": "https://github.com/0xKobold/pi-kobold/issues"
+  },
+  "homepage": "https://github.com/0xKobold/pi-kobold#readme"
 }
