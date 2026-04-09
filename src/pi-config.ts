@@ -85,7 +85,6 @@ export const config: Config = {
     './src/extensions/core/twitch-extension.ts',
     
     // DRACONIC SYSTEMS
-    './src/extensions/core/fileops-extension.ts',
     './src/extensions/core/git-commit-extension.ts',
     './src/extensions/core/draconic-lair-extension.ts',
     './src/extensions/core/draconic-hoard-extension.ts',

@@ -276,7 +276,6 @@ function verifyExtensions(): string[] {
   ];
 
   // Check that extensions exist
-  const testExt = ext('fileops-extension');
   if (!existsSync(testExt)) {
     console.error(`⚠️  Warning: Extensions not found at ${extensionDir}`);
     console.error(`   Expected: ${testExt}`);
