@@ -228,7 +228,6 @@ function verifyExtensions(): string[] {
     
     // Core Features
     '--extension', ext('heartbeat-extension'),
-    '--extension', ext('task-manager-extension'),
     
     // Multi-Channel
     '--extension', ext('multi-channel-extension'),

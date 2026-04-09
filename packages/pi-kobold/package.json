@@ -1,6 +1,6 @@
 {
   "name": "@0xkobold/pi-kobold",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "description": "Meta-extension for 0xKobold that bundles pi-orchestration, pi-gateway, pi-ollama, pi-learn, pi-persona, and development tools",
   "author": "0xKobold",
   "license": "MIT",
@@ -43,7 +43,8 @@
       "./node_modules/@0xkobold/pi-mcp/dist/index.js",
       "./node_modules/@0xkobold/pi-secret-guardian/dist/index.js",
       "./node_modules/@0xkobold/pi-persona/dist/index.js",
-      "./node_modules/@0xkobold/pi-web/dist/index.js"
+      "./node_modules/@0xkobold/pi-web/dist/index.js",
+      "./node_modules/@0xkobold/pi-task/dist/index.js"
     ]
   },
   "peerDependencies": {
@@ -64,7 +65,8 @@
     "@0xkobold/pi-orchestration": "^0.3.0",
     "@0xkobold/pi-persona": "^0.1.0",
     "@0xkobold/pi-secret-guardian": "^0.1.0",
-    "@0xkobold/pi-web": "file:../pi-web"
+    "@0xkobold/pi-web": "file:../pi-web",
+    "@0xkobold/pi-task": "file:../pi-task"
   },
   "devDependencies": {
     "@types/bun": "latest",

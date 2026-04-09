@@ -1,0 +1,48 @@
+{
+  "name": "@0xkobold/pi-task",
+  "version": "0.1.0",
+  "description": "Kanban-style task management for pi agents — backlog, in-progress, review, blocked, done with SQLite persistence",
+  "author": "0xKobold",
+  "license": "MIT",
+  "keywords": ["pi-package", "pi-extension", "task", "kanban", "project-management"],
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./store": {
+      "import": "./dist/store.js",
+      "types": "./dist/store.d.ts"
+    }
+  },
+  "files": [
+    "dist/",
+    "src/",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "bun test",
+    "prepublishOnly": "rm -rf dist && tsc"
+  },
+  "dependencies": {},
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": ">=0.65.0",
+    "@sinclair/typebox": ">=0.32.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.0",
+    "typescript": "^6.0.2"
+  },
+  "pi": {
+    "extensions": ["./dist/index.js"]
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/0xKobold/pi-task.git"
+  }
+}

@@ -77,7 +77,6 @@ export const config: Config = {
     './src/sessions/UnifiedSessionBridge.ts',
     
     // Core Features
-    './src/extensions/core/task-manager-extension.ts',
     './src/extensions/core/heartbeat-extension.ts',
     
     // Multi-Channel
