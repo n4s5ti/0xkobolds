@@ -214,13 +214,10 @@ function verifyExtensions(): string[] {
     // Ollama Provider Extension (npm package)
     '--extension', ollamaExtensionPath,
     // 🧠 Adaptive Model Router (DISABLED - using pi-ollama directly)
-    // '--extension', ext('routed-ollama-extension'),
 
     // Core Features
     // Agent Orchestration (Unified - v0.2.0)
     // Replaces: agent-registry, subagent-extension, agent-lifecycle, agent-workspace
-    '--extension', ext('agent-orchestrator-extension'),
-    '--extension', ext('persona-loader-extension'),
     
     // Legacy Extensions (DEPRECATED - will be removed in v0.3.0)
     // Kept for backwards compatibility, use agent_orchestrate instead
@@ -264,8 +261,6 @@ function verifyExtensions(): string[] {
 
     // Integrations (mcp now via @0xkobold/pi-mcp package)
     // '--extension', ext('mcp-extension'),
-    '--extension', ext('gateway-extension'),
-    '--extension', ext('gateway-status-extension'),
     '--extension', ext('websearch-enhanced-extension'),
     // Memory & Learning (via pi-learn npm package)
     '--extension', findPiLearnExtension(),
@@ -279,7 +274,6 @@ function verifyExtensions(): string[] {
     '--extension', findPiSuggestExtension(),
     '--extension', ext('diagnostics-extension'),
     '--extension', ext('workspace-footer-extension'),
-    // Deprecated: Use agent-orchestrator-extension instead
     // '--extension', ext('subagent-extension'),
     // Note: pi-coding-agent updates disabled - user manages dependencies manually
     // '--extension', ext('update-extension'),

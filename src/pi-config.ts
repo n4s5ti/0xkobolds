@@ -75,12 +75,10 @@ export const config: Config = {
     // Infrastructure
     './src/config/unified-config.ts',
     './src/extensions/core/config-extension.ts',
-    // './src/extensions/core/routed-ollama-extension.ts',  // Disabled - using pi-ollama instead
     './src/sessions/UnifiedSessionBridge.ts',
     
     // Core Features
     './src/extensions/core/memory-bootstrap-extension.ts',
-    // persona-loader-extension.ts replaced by @0xkobold/pi-persona (loaded via pi-kobold meta-extension)
     './src/extensions/core/onboarding-extension.ts',
     './src/extensions/core/task-manager-extension.ts',
     './src/extensions/core/heartbeat-extension.ts',
@@ -91,8 +89,6 @@ export const config: Config = {
     './src/extensions/core/twitch-extension.ts',
     
     // DRACONIC SYSTEMS
-    // './src/extensions/core/agent-orchestrator-extension.ts',  // Disabled - using pi-orchestration instead
-    './src/extensions/core/gateway-extension.ts',
     './src/extensions/core/fileops-extension.ts',
     './src/extensions/core/git-commit-extension.ts',
     './src/extensions/core/draconic-lair-extension.ts',
@@ -103,8 +99,6 @@ export const config: Config = {
     './src/extensions/core/extension-scaffold-extension.ts',
     './src/extensions/core/diagnostics-extension.ts',
 
-    // Tool Integrations (old mcp-extension replaced by @0xkobold/pi-mcp package)
-    // './src/extensions/core/mcp-extension.ts',
     './node_modules/@aliou/pi-processes/src/index.ts',
     './src/extensions/core/websearch-enhanced-extension.ts',
     './src/extensions/core/wallet-extension.ts',
@@ -112,7 +106,6 @@ export const config: Config = {
     './src/extensions/core/self-update-extension.ts',
     
     // Community Extensions
-    // './src/extensions/community/draconic-subagents-wrapper.ts',  // Disabled - using pi-orchestration
     './src/extensions/community/draconic-messenger-wrapper.ts',
     
     // Context Engine
