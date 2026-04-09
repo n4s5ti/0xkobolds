@@ -1,6 +1,6 @@
 {
   "name": "@0xkobold/pi-gateway",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "description": "Hermes-style messaging gateway for pi - multi-platform agent with sessions, security, and background tasks",
   "author": "0xKobold",
   "license": "MIT",
@@ -12,6 +12,10 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./api": {
+      "import": "./dist/api.js",
+      "types": "./dist/api.d.ts"
     }
   },
   "files": [

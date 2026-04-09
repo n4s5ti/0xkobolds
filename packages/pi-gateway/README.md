@@ -66,6 +66,49 @@ pi install npm:@0xkobold/pi-kobold
 | `gateway_background_tasks` | List and manage background tasks |
 | `gateway_pairing` | Generate, list, or approve pairing codes |
 
+## Programmatic API
+
+Pi-gateway now exports a programmatic API so it can be started from outside a pi session:
+
+```typescript
+import { startGateway, stopGateway, isGatewayRunning, getStatus } from '@0xkobold/pi-gateway/api';
+
+// Check if already running
+const running = await isGatewayRunning(3847);
+
+// Start the gateway
+const status = await startGateway({ port: 3847, host: '0.0.0.0' });
+
+// Get status
+const current = getStatus();
+
+// Stop
+await stopGateway();
+```
+
+| Function | Description |
+|----------|-------------|
+| `startGateway(opts?)` | Start HTTP/WS server, adapters, and cron |
+| `stopGateway()` | Stop all adapters, close server, kill RPC process |
+| `isGatewayRunning(port?)` | Check if a gateway is already running on a port |
+| `getStatus()` | Get current status (running, adapters, clients, sessions) |
+| `getConfig()` | Get current gateway config |
+| `isRunning()` | Check if gateway is running (sync) |
+| `getAdapter(platform)` | Get a platform adapter by name |
+| `getAdapters()` | Get all active adapters |
+| `sendMessage(platform, channelId, content)` | Send a message through a platform adapter |
+| `broadcast(event, data)` | Broadcast to all connected WebSocket clients |
+
+### Start Options
+
+```typescript
+interface StartGatewayOptions {
+  port?: number;       // Override config port
+  host?: string;      // Override config host
+  noAgent?: boolean;  // Don't spawn pi RPC process (when pi is already running)
+}
+```
+
 ## Session Reset Policies
 
 - **idle** — Reset after N minutes of inactivity (default: 1440 = 24h)
