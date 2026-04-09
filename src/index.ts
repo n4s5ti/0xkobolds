@@ -256,7 +256,6 @@ function verifyExtensions(): string[] {
 
     // Integrations (mcp now via @0xkobold/pi-mcp package)
     // '--extension', ext('mcp-extension'),
-    '--extension', ext('websearch-enhanced-extension'),
     // Memory & Learning (via pi-learn npm package)
     '--extension', findPiLearnExtension(),
     // 📓 Obsidian Bridge (local vault sync)

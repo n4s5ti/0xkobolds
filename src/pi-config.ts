@@ -94,7 +94,6 @@ export const config: Config = {
     './src/extensions/core/diagnostics-extension.ts',
 
     './node_modules/@aliou/pi-processes/src/index.ts',
-    './src/extensions/core/websearch-enhanced-extension.ts',
     './src/extensions/core/wallet-extension.ts',
     './src/extensions/core/update-extension.ts',
     './src/extensions/core/self-update-extension.ts',
