@@ -7,22 +7,21 @@
  * - pi-ollama (unified Ollama providers)
  * - pi-learn (persistent memory & reasoning)
  * - pi-secret-guardian (secret detection & pi-share-hf)
+ * - pi-persona (scope-aware persona management)
  * - Dev tools (skill/extension scaffolding)
  *
- * Architecture: pi's loader does NOT auto-discover sub-extensions from
- * node_modules. This meta-extension explicitly loads each sub-extension
- * by importing its factory and calling it with the same ExtensionAPI.
- * This makes `pi install @0xkobold/pi-kobold` a single-step install that
- * pulls all bundled extensions via deps and activates them.
+ * Architecture: Sub-extensions are declared in package.json "pi.extensions"
+ * so pi's own loader handles them with proper runtime initialization.
+ * This factory only registers kobold-specific tools (kobold_initialize,
+ * kobold_create_skill, etc.). The sub-extension factories are NOT called
+ * manually — that causes "Action methods cannot be called during extension
+ * loading" errors because pi's runtime isn't initialized yet.
  *
  * Standalone use: `pi install @0xkobold/pi-ollama` → works independently
- * Bundle use: `pi install @0xkobold/pi-kobold` → loads everything (incl. secret-guardian)
- * Pick & mix: `pi install @0xkobold/pi-kobold @0xkobold/pi-learn` → no conflicts
- * Standalone:  `pi install @0xkobold/pi-secret-guardian` → secrets only
- *   (pi-learn loads once; duplicate registration is guarded)
+ * Bundle use: `pi install @0xkobold/pi-kobold` → loads everything via pi.extensions
  */
 
-import type { ExtensionAPI, ExtensionContext, ExtensionFactory } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { mkdir, writeFile } from "fs/promises";
 import { join } from "path";
@@ -35,14 +34,9 @@ import {
   type LLMExecutor,
 } from "@0xkobold/pi-orchestration";
 
-// Sub-extension factories — loaded by pi-kobold so users don't need manual setup
-import orchestrationExtension from "@0xkobold/pi-orchestration";
-import gatewayExtension from "@0xkobold/pi-gateway";
-import ollamaExtension from "@0xkobold/pi-ollama";
-import learnExtension from "@0xkobold/pi-learn";
-import mcpExtension from "@0xkobold/pi-mcp";
-import secretGuardianExtension from "@0xkobold/pi-secret-guardian";
-import personaExtension from "@0xkobold/pi-persona";
+// Sub-extension imports are NOT needed here — they're loaded by pi's
+// extension system via the "pi.extensions" array in package.json.
+// We still import pi-orchestration as a library for its orchestrate() function.
 
 // Re-export orchestration types and functions for library consumers
 export type { OrchestrateOptions, OrchestrateResult, ChainResult, ParallelResult } from "@0xkobold/pi-orchestration";
@@ -350,48 +344,16 @@ function detectExtensions(pi: ExtensionAPI) {
 
 export default async (pi: ExtensionAPI): Promise<void> => {
   // --------------------------------------------------------------------------
-  // Load sub-extensions with duplicate guard
+  // Sub-extensions are declared in package.json "pi.extensions" so pi's own
+  // loader handles them with proper runtime initialization. This avoids
+  // the "Action methods cannot be called during extension loading" error
+  // that occurs when calling sub-extension factories manually.
   //
-  // pi's loader does NOT auto-discover sub-extensions from node_modules.
-  // We explicitly load each bundled sub-extension so that installing
-  // pi-kobold alone activates everything.
-  //
-  // If a sub-extension was already loaded by pi's extension loader
-  // (e.g., root pi-config.ts lists it separately), we detect it by
-  // checking whether any of its known tool names are already registered.
-  // pi's registerTool uses Map.set() so duplicate tools silently overwrite,
-  // but side effects (DB connections, event listeners) are not idempotent
-  // and would run again on double-load.
+  // pi-kobold's factory only registers its own kobold-specific tools.
+  // Sub-extensions (pi-orchestration, pi-gateway, pi-ollama, pi-learn,
+  // pi-mcp, pi-secret-guardian, pi-persona) are loaded by pi's extension
+  // system from the "pi.extensions" array in package.json.
   // --------------------------------------------------------------------------
-  const subExtensions: Array<{ name: string; factory: ExtensionFactory; sentinel: { type: "tool" | "command"; name: string } }> = [
-    { name: "pi-orchestration", factory: orchestrationExtension, sentinel: { type: "tool", name: "orchestrate" } },
-    { name: "pi-gateway",      factory: gatewayExtension,      sentinel: { type: "tool", name: "gateway_status" } },
-    { name: "pi-ollama",      factory: ollamaExtension,        sentinel: { type: "command", name: "ollama" } },
-    { name: "pi-learn",       factory: learnExtension,          sentinel: { type: "tool", name: "learn_add_message" } },
-    { name: "pi-mcp",               factory: mcpExtension,              sentinel: { type: "tool", name: "mcp_discover" } },
-    { name: "pi-secret-guardian", factory: secretGuardianExtension,   sentinel: { type: "tool", name: "secret_scan" } },
-    { name: "pi-persona",        factory: personaExtension,           sentinel: { type: "tool", name: "persona" } },
-  ];
-
-  const existingTools = new Set((pi.getAllTools() as any[]).map((t: any) => t.name));
-  const existingCommands = new Set((pi.getCommands?.() as any[] ?? []).map((c: any) => c.name));
-
-  for (const { name, factory, sentinel } of subExtensions) {
-    const alreadyLoaded = sentinel.type === "tool"
-      ? existingTools.has(sentinel.name)
-      : existingCommands.has(sentinel.name);
-
-    if (alreadyLoaded) {
-      console.log(`[pi-kobold] ⏭️ Skipping ${name} (already loaded: ${sentinel.type} "${sentinel.name}" found)`);
-    } else {
-      try {
-        await factory(pi);
-        console.log(`[pi-kobold] ✅ Loaded sub-extension: ${name}`);
-      } catch (err) {
-        console.error(`[pi-kobold] ⚠️ Failed to load sub-extension ${name}: ${err instanceof Error ? err.message : String(err)}`);
-      }
-    }
-  }
 
   console.log("[pi-kobold] Meta-extension loading — registering kobold-specific tools");
 
@@ -671,5 +633,5 @@ export default async (pi: ExtensionAPI): Promise<void> => {
   // Register git package sync tools
   registerGitPackageSyncTools(pi);
 
-  console.log("[pi-kobold] Extension loaded — 11 kobold tools + 7 sub-extensions registered");
+  console.log("[pi-kobold] Extension loaded — kobold tools registered (sub-extensions loaded by pi)");
 };
