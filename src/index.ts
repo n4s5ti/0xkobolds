@@ -230,7 +230,6 @@ function verifyExtensions(): string[] {
     // Core Features
     '--extension', ext('onboarding-extension'),
     '--extension', ext('heartbeat-extension'),
-    '--extension', ext('discord-channel-extension'),
     '--extension', ext('task-manager-extension'),
     
     // Multi-Channel
@@ -257,7 +256,6 @@ function verifyExtensions(): string[] {
     '--extension', ext('draconic-hoard-extension'),
     '--extension', ext('draconic-lair-extension'),
     '--extension', ext('draconic-safety-extension'),
-    // '--extension', ext('tui-integration-extension'),  // DISABLED: Using pi-subagents native tree
 
     // Integrations (mcp now via @0xkobold/pi-mcp package)
     // '--extension', ext('mcp-extension'),

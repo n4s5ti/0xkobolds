@@ -76,5 +76,3 @@ export {
   updateWidgetFromOrchestrator,
 } from "./widget.js";
 
-// Re-export quiet mode functions
-export { isQuietMode, setQuietMode } from "../extensions/core/autonomy-extension.js";

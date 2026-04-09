@@ -78,7 +78,6 @@ export const config: Config = {
     './src/sessions/UnifiedSessionBridge.ts',
     
     // Core Features
-    './src/extensions/core/memory-bootstrap-extension.ts',
     './src/extensions/core/onboarding-extension.ts',
     './src/extensions/core/task-manager-extension.ts',
     './src/extensions/core/heartbeat-extension.ts',
@@ -96,7 +95,6 @@ export const config: Config = {
     './src/extensions/core/draconic-safety-extension.ts',
 
     // Developer Tools
-    './src/extensions/core/extension-scaffold-extension.ts',
     './src/extensions/core/diagnostics-extension.ts',
 
     './node_modules/@aliou/pi-processes/src/index.ts',
