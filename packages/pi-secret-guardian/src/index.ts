@@ -186,6 +186,7 @@ const factory = async (pi: ExtensionAPI): Promise<void> => {
 
       onUpdate?.({
         content: [{ type: "text", text: `🔍 Scanning for secrets (scope: ${scope})...` }],
+        details: { scope, phase: "start" },
       });
 
       const projectDir = ctx.cwd;
@@ -195,7 +196,7 @@ const factory = async (pi: ExtensionAPI): Promise<void> => {
 
       // ── Scan environment files ──
       if (scope === "env" || scope === "all") {
-        onUpdate?.({ content: [{ type: "text", text: "📜 Scanning environment files..." }] });
+        onUpdate?.({ content: [{ type: "text", text: "📜 Scanning environment files..." }], details: { phase: "env" } });
 
         for (const envFile of CONFIG.envFiles) {
           const projectPath = join(projectDir, envFile);
@@ -224,7 +225,7 @@ const factory = async (pi: ExtensionAPI): Promise<void> => {
 
       // ── Scan project source files ──
       if (scope === "project" || scope === "all") {
-        onUpdate?.({ content: [{ type: "text", text: "📁 Scanning project files..." }] });
+        onUpdate?.({ content: [{ type: "text", text: "📁 Scanning project files..." }], details: { phase: "project" } });
 
         const { stdout } = await exec(
           "rg",
@@ -254,7 +255,7 @@ const factory = async (pi: ExtensionAPI): Promise<void> => {
 
       // ── Scan pi sessions ──
       if (scope === "sessions" || scope === "all") {
-        onUpdate?.({ content: [{ type: "text", text: "💬 Scanning pi sessions..." }] });
+        onUpdate?.({ content: [{ type: "text", text: "💬 Scanning pi sessions..." }], details: { phase: "sessions" } });
 
         const sessionDir = join(
           home,
@@ -282,6 +283,7 @@ const factory = async (pi: ExtensionAPI): Promise<void> => {
       if (includeTruffleHog) {
         onUpdate?.({
           content: [{ type: "text", text: "🐷 Running TruffleHog verified scan..." }],
+          details: { phase: "trufflehog" },
         });
 
         const targets: string[] = [];
@@ -635,6 +637,7 @@ const factory = async (pi: ExtensionAPI): Promise<void> => {
               text: "❌ pi-share-hf workspace not found at `.pi/hf-sessions/`",
             },
           ],
+          details: { error: true, reason: "workspace-not-found" },
         };
       }
 
@@ -741,6 +744,7 @@ const factory = async (pi: ExtensionAPI): Promise<void> => {
 
       return {
         content: [{ type: "text", text: parts.join("\n") }],
+        details: { tool: "secret_report" },
       };
     },
   });
@@ -778,7 +782,7 @@ const factory = async (pi: ExtensionAPI): Promise<void> => {
       if (dryCode !== 0) {
         parts.push("❌ Dry-run failed:");
         parts.push(dryOutput);
-        return { content: [{ type: "text", text: parts.join("\n") }] };
+        return { content: [{ type: "text", text: parts.join("\n") }], details: { error: true, phase: "dry-run" } };
       }
 
       parts.push("## 🏗️ Dry Run Results");
@@ -788,7 +792,7 @@ const factory = async (pi: ExtensionAPI): Promise<void> => {
 
       if (params.dryRunOnly) {
         parts.push("\nℹ️ Dry-run only — no files uploaded.");
-        return { content: [{ type: "text", text: parts.join("\n") }] };
+        return { content: [{ type: "text", text: parts.join("\n") }], details: { dryRun: true } };
       }
 
       // Actual upload
@@ -809,7 +813,7 @@ const factory = async (pi: ExtensionAPI): Promise<void> => {
         parts.push(uploadOutput.slice(-1000));
       }
 
-      return { content: [{ type: "text", text: parts.join("\n") }] };
+      return { content: [{ type: "text", text: parts.join("\n") }], details: { uploaded: uploadCode === 0 } };
     },
   });
 
