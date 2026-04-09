@@ -21,6 +21,9 @@ import { initCommand } from "./commands/init.js";
 // Extension CLI registrations
 import { registerDiscordCli } from "./extensions/discord.js";
 import { registerHeartbeatCli } from "./extensions/heartbeat.js";
+
+// Gateway command (via pi-gateway API)
+import { createGatewayCommand } from "./commands/gateway.js";
 import { registerEnvCli } from "./extensions/env.js";
 
 
@@ -73,6 +76,9 @@ export function createCli(): Command {
   program.addCommand(createSystemCommand());
   program.addCommand(setupCommand);
   program.addCommand(initCommand);
+
+  // Gateway (via pi-gateway API)
+  program.addCommand(createGatewayCommand());
 
   
   
