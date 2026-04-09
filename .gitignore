@@ -44,3 +44,5 @@ EOF.npmrc
 kobold.json
 kobold.json.bak
 .pi/hf-sessions/.pi/hf-sessions/secrets.txt
+packages/pi-persona/
+packages/pi-secret-guardian/

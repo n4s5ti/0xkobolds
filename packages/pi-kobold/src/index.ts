@@ -42,8 +42,7 @@ import ollamaExtension from "@0xkobold/pi-ollama";
 import learnExtension from "@0xkobold/pi-learn";
 import mcpExtension from "@0xkobold/pi-mcp";
 import secretGuardianExtension from "@0xkobold/pi-secret-guardian";
-// TODO: Re-enable when pi-persona is published
-// import personaExtension from "@0xkobold/pi-persona";
+import personaExtension from "@0xkobold/pi-persona";
 
 // Re-export orchestration types and functions for library consumers
 export type { OrchestrateOptions, OrchestrateResult, ChainResult, ParallelResult } from "@0xkobold/pi-orchestration";
@@ -371,8 +370,7 @@ export default async (pi: ExtensionAPI): Promise<void> => {
     { name: "pi-learn",       factory: learnExtension,          sentinel: { type: "tool", name: "learn_add_message" } },
     { name: "pi-mcp",               factory: mcpExtension,              sentinel: { type: "tool", name: "mcp_discover" } },
     { name: "pi-secret-guardian", factory: secretGuardianExtension,   sentinel: { type: "tool", name: "secret_scan" } },
-    // TODO: Re-enable when pi-persona is published
-    // { name: "pi-persona",        factory: personaExtension,           sentinel: { type: "tool", name: "persona" } },
+    { name: "pi-persona",        factory: personaExtension,           sentinel: { type: "tool", name: "persona" } },
   ];
 
   const existingTools = new Set((pi.getAllTools() as any[]).map((t: any) => t.name));

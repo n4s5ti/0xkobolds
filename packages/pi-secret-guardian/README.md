@@ -17,14 +17,24 @@ Part of the [0xKobold](https://github.com/0xKobold) ecosystem.
 ### Bundled (recommended)
 
 ```bash
-pi install @0xkobold/pi-kobold
-# pi-secret-guardian loaded as sub-extension
+pi install npm:@0xkobold/pi-kobold
+# pi-secret-guardian loaded as sub-extension automatically
 ```
 
 ### Standalone
 
 ```bash
-pi install @0xkobold/pi-secret-guardian
+pi install npm:@0xkobold/pi-secret-guardian
+
+# Or in pi-config.ts
+{
+  extensions: [
+    'npm:@0xkobold/pi-secret-guardian'
+  ]
+}
+
+# Or temporary (testing)
+pi -e npm:@0xkobold/pi-secret-guardian
 ```
 
 ### External dependencies
@@ -74,6 +84,38 @@ Run secret_report to check uploadable sessions
 Run secret_upload to upload to HuggingFace
 ```
 
+## API / Library Usage
+
+Types and utility functions are available for programmatic use:
+
+```typescript
+// Import from shared module (recommended)
+import {
+  type SecretFinding,
+  type TruffleHogFinding,
+  type ScanResult,
+  maskSecret,
+  parseEnvFile,
+  parseNpmrc,
+  scanWithPatterns,
+  SECRET_PATTERNS,
+  ENV_FILES,
+} from "@0xkobold/pi-secret-guardian/shared";
+
+// Or from the main entry (convenience re-exports)
+import { maskSecret, type SecretFinding } from "@0xkobold/pi-secret-guardian";
+
+// Mask a secret for safe display
+maskSecret("ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890");
+// → "ghp_****890"
+
+// Parse an .env file for secrets
+const findings = parseEnvFile(envContent, "/path/to/.env");
+
+// Scan content against known patterns
+const patternHits = scanWithPatterns(sourceCode, "/path/to/file.ts", "project-file");
+```
+
 ## pi-share-hf Ollama Patch
 
 pi-share-hf's LLM review subprocess uses `pi --no-extensions`, which prevents pi-ollama from loading. This extension includes a patch script that adds `-e <pi-ollama-path>` after `--no-extensions` so the review can use your ollama models.
@@ -97,14 +139,30 @@ Re-run after any `npm update -g pi-share-hf`.
 ## Architecture
 
 ```
-pi-secret-guardian
-├── src/index.ts              # Extension factory (4 tools + 2 commands)
-└── scripts/
-    └── pi-share-hf-patch.sh  # Patches pi-share-hf for ollama support
+src/
+├── index.ts    # Extension factory (4 tools + 2 commands + lifecycle hooks)
+└── shared.ts   # Types, patterns, and utility functions (library API)
+scripts/
+└── pi-share-hf-patch.sh  # Patches pi-share-hf for ollama support
 ```
 
 Integrated into pi-kobold as a sub-extension with duplicate-load guard.
 
+## Related Packages
+
+- [`@0xkobold/pi-kobold`](https://github.com/0xKobold/pi-kobold) — Meta-extension that bundles this and other sub-extensions
+- [`@0xkobold/pi-ollama`](https://github.com/0xKobold/pi-ollama) — Ollama integration (required for HF review patch)
+
+## Local Development
+
+```bash
+git clone https://github.com/0xKobold/pi-secret-guardian
+cd pi-secret-guardian
+npm install
+npm run build
+pi install ./
+```
+
 ## License
 
-MIT
+MIT © 0xKobold
