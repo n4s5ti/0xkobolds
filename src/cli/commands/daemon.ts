@@ -5,6 +5,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { promisify } from "node:util";
+import { startGateway, stopGateway } from "../../gateway/gateway-server.js";
 
 const execAsync = promisify(exec);
 const KOBOLD_DIR = join(homedir(), ".0xkobold");
@@ -33,7 +34,7 @@ async function getDaemonPid(): Promise<number | null> {
 
 const startCommand = new Command("start")
   .description("Start the 0xKobold daemon")
-  .option("-d, --detach", "Run daemon in background (default: true)")
+  .option("-d, --detach", "Run daemon in background")
   .option("-p, --port <port>", "Port to listen on", "3456")
   .action(async (options) => {
     try {
@@ -43,27 +44,14 @@ const startCommand = new Command("start")
         return;
       }
 
-      console.log("🚀 Starting 0xKobold daemon...");
+      const port = parseInt(options.port);
 
-      // Use TypeScript file directly with Bun (no build required)
-      const daemonScript = join(process.cwd(), "daemon/index.ts");
-      
-      if (!existsSync(daemonScript)) {
-        console.error("❌ Daemon script not found: daemon/index.ts");
-        process.exit(1);
-      }
-
-      const env = {
-        ...process.env,
-        KOBOLD_PORT: options.port,
-        KOBOLD_DIR
-      };
-
-      if (options.detach !== false) {
-        const child = spawn("bun", ["run", daemonScript], {
+      if (options.detach) {
+        // Spawn this same process as a detached background daemon
+        const child = spawn("bun", ["run", import.meta.path], {
           detached: true,
           stdio: ["ignore", "ignore", "ignore"],
-          env
+          env: { ...process.env, KOBOLD_PORT: String(port), KOBOLD_DIR },
         });
 
         child.unref();
@@ -74,27 +62,27 @@ const startCommand = new Command("start")
         await new Promise((resolve) => setTimeout(resolve, 1000));
         
         if (await isDaemonRunning()) {
-          console.log(`✓ Daemon started (PID: ${child.pid}, Port: ${options.port})`);
+          console.log(`✓ Daemon started (PID: ${child.pid}, Port: ${port})`);
         } else {
           console.error("❌ Failed to start daemon");
           process.exit(1);
         }
       } else {
-        const child = spawn("bun", ["run", daemonScript], {
-          stdio: "inherit",
-          env
+        // Run in foreground — start gateway directly
+        process.on("SIGTERM", () => {
+          console.log("[daemon] SIGTERM, shutting down...");
+          stopGateway();
+          process.exit(0);
+        });
+        process.on("SIGINT", () => {
+          console.log("[daemon] SIGINT, shutting down...");
+          stopGateway();
+          process.exit(0);
         });
 
-        if (child.pid) {
-          await writeFile(PID_FILE, child.pid.toString());
-        }
-        
-        child.on("exit", async (code) => {
-          if (existsSync(PID_FILE)) {
-            await unlink(PID_FILE);
-          }
-          process.exit(code || 0);
-        });
+        await writeFile(PID_FILE, process.pid.toString());
+        console.log(`[daemon] Starting on port ${port}...`);
+        startGateway({ port });
       }
     } catch (error) {
       console.error("❌ Failed to start daemon:", error);
