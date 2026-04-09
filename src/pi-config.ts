@@ -74,17 +74,14 @@ export const config: Config = {
   extensions: [
     // Infrastructure
     './src/config/unified-config.ts',
-    './src/extensions/core/config-extension.ts',
     './src/sessions/UnifiedSessionBridge.ts',
     
     // Core Features
-    './src/extensions/core/onboarding-extension.ts',
     './src/extensions/core/task-manager-extension.ts',
     './src/extensions/core/heartbeat-extension.ts',
     
     // Multi-Channel
     './src/extensions/core/multi-channel-extension.ts',
-    './src/extensions/core/discord-extension.ts',
     './src/extensions/core/twitch-extension.ts',
     
     // DRACONIC SYSTEMS
@@ -107,7 +104,6 @@ export const config: Config = {
     './src/extensions/community/draconic-messenger-wrapper.ts',
     
     // Context Engine
-    './src/extensions/core/intelligent-context-extension.ts',
     
     // Published @0xkobold packages (explicit paths)
     ext('@0xkobold/pi-learn'),

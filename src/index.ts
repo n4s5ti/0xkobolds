@@ -227,13 +227,11 @@ function verifyExtensions(): string[] {
     // '--extension', ext('autonomous-subagent-extension'),
     
     // Core Features
-    '--extension', ext('onboarding-extension'),
     '--extension', ext('heartbeat-extension'),
     '--extension', ext('task-manager-extension'),
     
     // Multi-Channel
     '--extension', ext('multi-channel-extension'),
-    '--extension', ext('discord-extension'),
     
     // Safety extensions (consolidated in draconic-safety-extension)
     // REMOVED extensions (commented out for reference):
@@ -270,7 +268,6 @@ function verifyExtensions(): string[] {
     // 👻 pi-suggest (ghost text prompt suggestions)
     '--extension', findPiSuggestExtension(),
     '--extension', ext('diagnostics-extension'),
-    '--extension', ext('workspace-footer-extension'),
     // '--extension', ext('subagent-extension'),
     // Note: pi-coding-agent updates disabled - user manages dependencies manually
     // '--extension', ext('update-extension'),
