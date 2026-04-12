@@ -20,7 +20,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { execSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, basename } from "node:path";
 
 // ============================================================================
 // Types
@@ -935,6 +935,7 @@ async function gitWorktree(params: {
   action: "list" | "add" | "remove";
   name?: string;
   branch?: string;
+  path?: string;
   cwd?: string;
 }): Promise<{ content: Array<{ type: "text"; text: string }>; details: any }> {
   const root = findGitRoot(params.cwd) || process.cwd();
@@ -974,12 +975,15 @@ async function gitWorktree(params: {
     }
 
     const branch = params.branch || `${name}-work`;
-    const worktreePath = join(root, ".worktrees", name);
+    // Default to sibling directory (outside repo) to prevent contamination
+    // e.g. /home/user/code/my-project -> /home/user/code/my-project-feat
+    const defaultWorktreePath = join(root, "..", `${basename(root)}-${name}`);
+    const worktreePath = params.path || defaultWorktreePath;
 
-    const addResult = run(`git worktree add -b ${branch} ${worktreePath} 2>&1`, root);
+    const addResult = run(`git worktree add -b ${branch} "${worktreePath}" 2>&1`, root);
     if (!addResult.ok) {
       // Branch might already exist
-      const addResult2 = run(`git worktree add ${worktreePath} ${branch} 2>&1`, root);
+      const addResult2 = run(`git worktree add "${worktreePath}" ${branch} 2>&1`, root);
       if (!addResult2.ok) {
         return {
           content: [{ type: "text", text: `❌ Failed to create worktree:\n${addResult.stderr}\n${addResult2.stderr}` }],
@@ -991,7 +995,7 @@ async function gitWorktree(params: {
     return {
       content: [{
         type: "text",
-        text: `✅ Created worktree for **${name}**\n\n- Branch: \`${branch}\`\n- Path: \`${worktreePath}\`\n\n\`\`\`bash\ncd ${worktreePath}\ngit worktree remove ${worktreePath}  # When done\n\`\`\``,
+        text: `✅ Created worktree for **${name}**\n\n- Branch: \`${branch}\`\n- Path: \`${worktreePath}\`\n\n\`\`\`bash\ncd ${worktreePath}\ngit worktree remove "${worktreePath}"  # When done\n\`\`\``,
       }],
       details: { success: true, name, branch, path: worktreePath },
     };
@@ -1006,17 +1010,23 @@ async function gitWorktree(params: {
       };
     }
 
-    const worktreePath = join(root, ".worktrees", name);
+    // Check sibling directory (new default) and legacy .worktrees/ path
+    const defaultWorktreePath = join(root, "..", `${basename(root)}-${name}`);
+    const legacyWorktreePath = join(root, ".worktrees", name);
+    let worktreePath = params.path || defaultWorktreePath;
+    if (!existsSync(worktreePath) && existsSync(legacyWorktreePath)) {
+      worktreePath = legacyWorktreePath;
+    }
     if (!existsSync(worktreePath)) {
       return {
-        content: [{ type: "text", text: `❌ Worktree not found at ${worktreePath}` }],
+        content: [{ type: "text", text: `❌ Worktree not found at ${worktreePath}${worktreePath === defaultWorktreePath ? ` or ${legacyWorktreePath}` : ""}` }],
         details: { error: true, name },
       };
     }
 
-    const removeResult = run(`git worktree remove ${worktreePath} 2>&1`, root);
+    const removeResult = run(`git worktree remove "${worktreePath}" 2>&1`, root);
     if (!removeResult.ok) {
-      const forceResult = run(`git worktree remove --force ${worktreePath} 2>&1`, root);
+      const forceResult = run(`git worktree remove --force "${worktreePath}" 2>&1`, root);
       if (!forceResult.ok) {
         return {
           content: [{ type: "text", text: `❌ Failed to remove worktree: ${removeResult.stderr}` }],
@@ -1035,13 +1045,7 @@ async function gitWorktree(params: {
     content: [{ type: "text", text: `❌ Unknown action: ${action}. Use list, add, or remove.` }],
     details: { error: true, action },
   };
-}
-
-// ============================================================================
-// Registration
-// ============================================================================
-
-export function registerGitPackageSyncTools(pi: ExtensionAPI): void {
+}export function registerGitPackageSyncTools(pi: ExtensionAPI): void {
   // Common config schema fragment — included via spread in each tool
   const configProps = {
     org: Type.Optional(Type.String({ description: "GitHub org or user (auto-detected from git remotes if omitted)" })),
@@ -1169,12 +1173,14 @@ export function registerGitPackageSyncTools(pi: ExtensionAPI): void {
       action: Type.Union([Type.Literal("list"), Type.Literal("add"), Type.Literal("remove")], { description: "Action: list, add, or remove" }),
       name: Type.Optional(Type.String({ description: "Worktree name (required for add/remove)" })),
       branch: Type.Optional(Type.String({ description: "Branch name for worktree (default: <name>-work)" })),
+      path: Type.Optional(Type.String({ description: "Custom path for the worktree directory (default: sibling directory outside repo to prevent contamination)" })),
       cwd: Type.Optional(Type.String({ description: "Git root directory" })),
     }),
     async execute(toolCallId, params, signal, onUpdate, ctx) {
       return gitWorktree({
         ...params,
         cwd: params.cwd || ctx?.cwd,
+        path: params.path,
       });
     },
   });

@@ -6,7 +6,7 @@
  */
 
 import { randomUUID } from "crypto";
-import { join } from "path";
+import { join, basename } from "path";
 import { bash, quote } from "./bash.js";
 
 /**
@@ -37,7 +37,10 @@ export interface WorktreeDiff {
 export async function createWorktree(basePath: string): Promise<WorktreeHandle> {
   const id = randomUUID().slice(0, 8);
   const branchName = `pi-orchestration-branch-${id}`;
-  const worktreePath = join(basePath, `.worktrees`, `wt-${id}`);
+  // Create as sibling directory to prevent contamination
+  // e.g. /home/user/code/my-project -> /home/user/code/my-project-wt-abc123
+  const repoName = basename(basePath);
+  const worktreePath = join(basePath, "..", `${repoName}-wt-${id}`);
   
   // Create the worktree directory
   await bash(`mkdir -p ${quote(worktreePath)}`);
@@ -71,18 +74,19 @@ export async function removeWorktree(handle: WorktreeHandle, applyToMain = false
       // Merge changes back first
       await bash(`cd ${quote(handle.path)} && git add -A && git commit -m "pi-orchestration worktree merge"`);
       
-      // Cherry-pick to main
-      const basePath = join(handle.path, "..", "..");
+      // Find the main repo from the worktree's .git file
+      const mainRepoPath = join(handle.path, "..", `${basename(handle.path).replace(/-wt-\w+$/, "")}`);
       // Use git merge instead of cherry-pick for simplicity and better tracking
-      await bash(`cd ${quote(basePath)} && git merge ${quote(handle.branch)} --no-edit`, {
+      await bash(`cd ${quote(mainRepoPath)} && git merge ${quote(handle.branch)} --no-edit`, {
         timeout: 10000,
       });
     }
     
     // Remove the worktree
     try {
-      const basePath = join(handle.path, "..", "..");
-      await bash(`cd ${quote(basePath)} && git worktree remove ${quote(handle.path)} --force`, {
+      // Use git worktree remove from the main repo
+      const mainRepoPath = join(handle.path, "..", `${basename(handle.path).replace(/-wt-\w+$/, "")}`);
+      await bash(`cd ${quote(mainRepoPath)} && git worktree remove ${quote(handle.path)} --force`, {
         timeout: 10000,
       }).catch(() => {
         // Fallback: just remove the directory
