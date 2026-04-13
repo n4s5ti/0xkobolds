@@ -45,3 +45,8 @@ kobold.json
 kobold.json.bak
 .pi/hf-sessions/
 .pi/hf-sessions/secrets.txt
+packages/pi-codebase-wiki/bun.lock
+packages/pi-codebase-wiki/dist/
+
+# Codebase wiki — compiled artifact, regenerated from source
+.codebase-wiki/
